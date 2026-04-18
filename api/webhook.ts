@@ -57,12 +57,9 @@ bot.command('invoke', async (ctx) => {
     const projects = parseOracleOutput(raw);
 
     if (projects.length === 0) {
-      await ctx.reply(
-        `𓂀 <b>The Oracle found no verified signals at this time.</b>\n\n` +
-        `The scan ran across DexScreener, Basescan, and X — but no tokens passed all verification filters simultaneously.\n\n` +
-        `<i>Accuracy over quantity. Try again later — fresh deployments surface constantly.</i>`,
-        { parse_mode: 'HTML' }
-      );
+      // No structured projects found — send Grok's analysis as formatted report
+      const messages = formatGenericReport('ORACLE SCAN REPORT', raw);
+      await sendMessages(ctx.chat.id, messages);
       return;
     }
 
