@@ -57,7 +57,9 @@ bot.command('invoke', async (ctx) => {
     const projects = parseOracleOutput(raw);
 
     if (projects.length === 0) {
-      await ctx.reply('𓂀 The Oracle found no verified signals at this time.\n\n<i>All candidates failed verification.</i>', { parse_mode: 'HTML' });
+      // Debug: send raw output preview to diagnose parsing
+      const preview = raw.slice(0, 3500);
+      await ctx.reply(`⚠️ Parser found 0 projects. Raw preview (${raw.length} chars):\n\n${preview}`);
       return;
     }
 
