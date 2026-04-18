@@ -57,9 +57,12 @@ bot.command('invoke', async (ctx) => {
     const projects = parseOracleOutput(raw);
 
     if (projects.length === 0) {
-      // Debug: send raw output preview to diagnose parsing
-      const preview = raw.slice(0, 3500);
-      await ctx.reply(`⚠️ Parser found 0 projects. Raw preview (${raw.length} chars):\n\n${preview}`);
+      await ctx.reply(
+        `𓂀 <b>The Oracle found no verified signals at this time.</b>\n\n` +
+        `The scan ran across DexScreener, Basescan, and X — but no tokens passed all verification filters simultaneously.\n\n` +
+        `<i>Accuracy over quantity. Try again later — fresh deployments surface constantly.</i>`,
+        { parse_mode: 'HTML' }
+      );
       return;
     }
 
