@@ -112,21 +112,28 @@ function extractField(raw: string, fieldName: string): string {
   return match ? match[1].trim() : '';
 }
 
+/**
+ * Try to split raw text using a list of regex patterns.
+ * Returns the split that yields the most sections (>1).
+ * NOTE: ---+ is intentionally excluded because Grok uses --- between
+ * sub-sections within each token, causing too many false splits.
+ */
 function bestSplit(raw: string): string[] {
   const patterns = [
-    /🟦\s*SIGNAL\s*/i,
-    /𓂀\s*\*{0,2}\s*(?:Signal|Project|Token)\s*/i,
-    /SIGNAL\s+\d+\s*☿?/i,
-    /━{5,}/,
-    /#{2,3}\s*(?:Signal|Project|Token)\s*/i,
-    /\*{2}(?:Signal|Project|Token)\s+\d+\*{2}/i,
-    /---+/,
+    /🟦\s*SIGNAL\s*/i,                              // 🟦 SIGNAL N
+    /𓂀\s*\*{0,2}\s*(?:Signal|Project)\s*/i,         // 𓂀 Signal/Project N
+    /SIGNAL\s+\d+\s*☿?/i,                            // SIGNAL 1 ☿
+    /━{5,}/,                                          // ━━━━━ horizontal rule
+    /#{2,3}\s*(?:Signal|Project|Token)\s*/i,          // ## Signal N
+    /\*{2}(?:Signal|Project|Token)\s+\d+\*{2}/i,     // **Signal 1**
   ];
 
   let best: string[] = [raw];
   for (const pattern of patterns) {
     const parts = raw.split(pattern);
-    if (parts.length > best.length) best = parts;
+    if (parts.length > best.length) {
+      best = parts;
+    }
   }
   return best;
 }
@@ -153,21 +160,79 @@ function parseSection(text: string, num: number): ParsedProject | null {
 }
 
 export function parseOracleOutput(raw: string): ParsedProject[] {
+  console.log(`[parser] Raw length: ${raw.length}`);
+  console.log(`[parser] Raw preview: ${raw.slice(0, 300)}`);
+
   const projects: ParsedProject[] = [];
   const seenTickers = new Set<string>();
 
+  // Strategy 1: Split by best matching delimiter
   const parts = bestSplit(raw);
+  console.log(`[parser] Best split: ${parts.length} parts`);
 
   for (let i = 1; i < parts.length && projects.length < 5; i++) {
     const project = parseSection(parts[i].trim(), i);
-    if (!project) continue;
+    if (!project) {
+      console.log(`[parser] Part ${i}: skipped`);
+      continue;
+    }
     if (seenTickers.has(project.ticker.toUpperCase())) continue;
     seenTickers.add(project.ticker.toUpperCase());
     projects.push({ ...project, number: projects.length + 1 });
+    console.log(`[parser] Part ${i}: OK -> ${project.ticker}`);
   }
 
-  // Brute-force fallback
+  // Strategy 2: Brute-force — find all $TICKER occurrences
   if (projects.length === 0 && raw.length > 100) {
+    console.log(`[parser] Split failed, trying brute-force ticker scan...`);
+
+    const tickerRegex = /\$([A-Z][A-Z0-9]{1,10})/g;
+    const allTickers: { ticker: string; index: number }[] = [];
+    let match;
+    while ((match = tickerRegex.exec(raw)) !== null) {
+      const t = `$${match[1]}`;
+      if (!allTickers.some((x) => x.ticker === t)) {
+        allTickers.push({ ticker: t, index: match.index });
+      }
+    }
+
+    console.log(`[parser] Found ${allTickers.length} unique tickers: ${allTickers.map((t) => t.ticker).join(', ')}`);
+
+    for (const { ticker, index } of allTickers) {
+      if (projects.length >= 5) break;
+      if (seenTickers.has(ticker.toUpperCase())) continue;
+
+      // Grab ~1500 chars around the ticker mention as context
+      const start = Math.max(0, index - 200);
+      const end = Math.min(raw.length, index + 1300);
+      const context = raw.slice(start, end);
+
+      // Verify this context has meaningful project data (not just a mention)
+      if (extractPotential(context) === null && extractRisk(context) === null) {
+        console.log(`[parser] Brute-force: ${ticker} skipped (no scores)`);
+        continue;
+      }
+
+      seenTickers.add(ticker.toUpperCase());
+      projects.push({
+        number: projects.length + 1,
+        ticker,
+        name: extractName(context),
+        summary: extractSummary(context),
+        signals: extractSignals(context),
+        potential: extractPotential(context),
+        risk: extractRisk(context),
+        probability: extractProbability(context),
+        fullText: context.trim(),
+      });
+      console.log(`[parser] Brute-force: OK -> ${ticker}`);
+    }
+  }
+
+  // Strategy 3: Even more relaxed — accept tickers without scores
+  if (projects.length === 0 && raw.length > 100) {
+    console.log(`[parser] Trying relaxed brute-force (no score requirement)...`);
+
     const tickerRegex = /\$([A-Z][A-Z0-9]{1,10})/g;
     const allTickers: { ticker: string; index: number }[] = [];
     let match;
@@ -186,6 +251,10 @@ export function parseOracleOutput(raw: string): ParsedProject[] {
       const end = Math.min(raw.length, index + 1300);
       const context = raw.slice(start, end);
 
+      // At minimum, need a Name or Thesis field
+      const hasContent = /(?:name|thesis|narrative|oracular)\s*[:=]/i.test(context);
+      if (!hasContent) continue;
+
       seenTickers.add(ticker.toUpperCase());
       projects.push({
         number: projects.length + 1,
@@ -198,9 +267,11 @@ export function parseOracleOutput(raw: string): ParsedProject[] {
         probability: extractProbability(context),
         fullText: context.trim(),
       });
+      console.log(`[parser] Relaxed: OK -> ${ticker}`);
     }
   }
 
+  console.log(`[parser] Final result: ${projects.length} projects`);
   return projects;
 }
 
