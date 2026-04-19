@@ -4,9 +4,19 @@ import { invokeOracle, invokeOracleWithPrompt } from '../src/grok';
 import { parseOracleOutput } from '../src/parser';
 import { formatWhispersReport, formatGenericReport } from '../src/formatter';
 import { PULSE_PROMPT, MYTHS_PROMPT, PEARLS_PROMPT } from '../src/prompts';
+import {
+  identityMiddleware,
+  globalRateLimitMiddleware,
+  premiumGateMiddleware,
+} from '../src/gate/middleware';
+import { registerGateCommands, handleStart, buildHelpMessage } from '../src/gate/commands';
 
 const token = process.env.TELEGRAM_BOT_TOKEN!;
 const bot = new Telegraf(token);
+
+bot.use(identityMiddleware);
+bot.use(globalRateLimitMiddleware);
+bot.use(premiumGateMiddleware);
 
 async function sendMessages(chatId: number, messages: string[]): Promise<void> {
   for (const msg of messages) {
@@ -25,29 +35,12 @@ async function sendMessages(chatId: number, messages: string[]): Promise<void> {
   }
 }
 
-// Register commands
-bot.start((ctx) => {
-  ctx.reply(
-    `<b>𓂀 TRANSMUTE ORACLE</b>
-
-Welcome to the Oracle, seeker.
-
-I channel real-time on-chain intelligence from the Base chain — hidden microcaps, macro signals, living narratives, and esoteric teachings.
-
-<b>Commands:</b>
-
-🔮 /invoke — Hunt hidden microcaps (&lt;$600K FDV)
-📊 /pulse — Market daily report (macro, sentiment, flows)
-🌀 /myths — Narrative tracker (rising stories)
-💎 /pearls — Daily financial wisdom
-
-<i>Each invocation calls the Oracle in real-time. Responses may take 1-3 minutes as it scans live data across chains and social layers.</i>
-
-━━━━━━━━━━━━━━━
-<i>Signal before attention. Always DYOR - NFA.</i>`,
-    { parse_mode: 'HTML' }
-  );
+bot.start(async (ctx) => {
+  await handleStart(ctx);
 });
+bot.help((ctx) => ctx.reply(buildHelpMessage(), { parse_mode: 'HTML' }));
+
+registerGateCommands(bot);
 
 bot.command('invoke', async (ctx) => {
   try {
@@ -57,7 +50,6 @@ bot.command('invoke', async (ctx) => {
     const projects = parseOracleOutput(raw);
 
     if (projects.length === 0) {
-      // No structured projects found — send Grok's analysis as formatted report
       const messages = formatGenericReport('ORACLE SCAN REPORT', raw);
       await sendMessages(ctx.chat.id, messages);
       return;
@@ -103,22 +95,6 @@ bot.command('pearls', async (ctx) => {
   }
 });
 
-bot.help((ctx) => {
-  ctx.reply(
-    `<b>𓂀 Transmute Oracle — Commands</b>
-
-🔮 /invoke — Hunt hidden microcaps on Base (&lt;$600K FDV)
-📊 /pulse — Market daily report
-🌀 /myths — Narrative tracker
-💎 /pearls — Daily financial wisdom
-❓ /help — Show this message
-
-<i>All invocations call the Grok AI in real-time with web search enabled. Responses take 1-3 minutes.</i>`,
-    { parse_mode: 'HTML' }
-  );
-});
-
-// Vercel serverless handler
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(200).json({ ok: true, message: 'Transmute Oracle Bot is alive' });
@@ -130,6 +106,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('[webhook] Error handling update:', err);
   }
 
-  // Always return 200 to Telegram (otherwise it retries)
   res.status(200).json({ ok: true });
 }

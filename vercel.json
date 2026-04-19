@@ -8,6 +8,15 @@
     },
     "api/set-webhook.ts": {
       "maxDuration": 10
+    },
+    "api/cron-cleanup.ts": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron-cleanup",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }
