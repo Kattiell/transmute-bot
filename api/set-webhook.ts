@@ -29,6 +29,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   );
 
+  const commandsRes = await fetch(
+    `https://api.telegram.org/bot${token}/setMyCommands`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: [
+          { command: 'start',  description: 'Start main menu' },
+          { command: 'invoke', description: 'Hunt hidden microcaps (<$600K FDV)' },
+          { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
+          { command: 'myths',  description: 'Narrative tracker (rising stories)' },
+          { command: 'pearls', description: 'Daily financial wisdom' },
+        ],
+      }),
+    }
+  );
+
+  const menuRes = await fetch(
+    `https://api.telegram.org/bot${token}/setChatMenuButton`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        menu_button: { type: 'commands' },
+      }),
+    }
+  );
+
   const data = await response.json();
-  res.status(200).json({ webhookUrl, telegram: data });
+  const commandsData = await commandsRes.json();
+  const menuData = await menuRes.json();
+  res.status(200).json({
+    webhookUrl,
+    telegram: data,
+    commands: commandsData,
+    menuButton: menuData,
+  });
 }
