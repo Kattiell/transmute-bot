@@ -189,6 +189,18 @@ process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 // Launch
-bot.launch().then(() => {
+bot.launch().then(async () => {
+  await bot.telegram.setMyCommands([
+    { command: 'start',  description: 'Start main menu' },
+    { command: 'invoke', description: 'Hunt hidden microcaps (<$600K FDV)' },
+    { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
+    { command: 'myths',  description: 'Narrative tracker (rising stories)' },
+    { command: 'pearls', description: 'Daily financial wisdom' },
+  ]);
+
+  await bot.telegram.setChatMenuButton({
+    menuButton: { type: 'commands' },
+  });
+
   console.log('𓂀 Transmute Oracle Bot is running');
 });
