@@ -242,17 +242,24 @@ export async function cleanupExpired(): Promise<{
   nonces: number;
   logs: number;
   cache: number;
+  codes: number;
+  challenges: number;
+  dailyUsage: number;
 }> {
   const client = db();
   const now = new Date().toISOString();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000).toISOString();
   const oneHourAgo = new Date(Date.now() - 3600_000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
 
-  const [links, nonces, logs, cache] = await Promise.all([
+  const [links, nonces, logs, cache, codes, challenges, dailyUsage] = await Promise.all([
     client.from('telegram_wallet_links').delete().lt('verified_until', now).select('telegram_id'),
     client.from('telegram_auth_nonces').delete().lt('expires_at', now).select('nonce'),
     client.from('telegram_access_log').delete().lt('created_at', thirtyDaysAgo).select('id'),
     client.from('telegram_balance_cache').delete().lt('fetched_at', oneHourAgo).select('wallet_address'),
+    client.from('telegram_access_codes').delete().lt('expires_at', now).select('id'),
+    client.from('telegram_code_challenges').delete().lt('expires_at', now).select('nonce'),
+    client.from('telegram_premium_daily_usage').delete().lt('usage_date', sevenDaysAgo).select('telegram_id'),
   ]);
 
   return {
@@ -260,5 +267,171 @@ export async function cleanupExpired(): Promise<{
     nonces: nonces.data?.length ?? 0,
     logs: logs.data?.length ?? 0,
     cache: cache.data?.length ?? 0,
+    codes: codes.data?.length ?? 0,
+    challenges: challenges.data?.length ?? 0,
+    dailyUsage: dailyUsage.data?.length ?? 0,
+  };
+}
+
+export interface AccessCodeRow {
+  id: number;
+  code_hash: string;
+  wallet_address: string;
+  telegram_id: number | null;
+  issued_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+  revoked_at: string | null;
+  balance_at_issue: string;
+}
+
+export async function findAccessCodeByHash(codeHash: string): Promise<AccessCodeRow | null> {
+  const { data } = await db()
+    .from('telegram_access_codes')
+    .select('*')
+    .eq('code_hash', codeHash)
+    .maybeSingle();
+  return (data as AccessCodeRow) ?? null;
+}
+
+export async function consumeAccessCode(
+  codeHash: string,
+  telegramId: number,
+): Promise<AccessCodeRow | null> {
+  const { data } = await db()
+    .from('telegram_access_codes')
+    .update({ consumed_at: new Date().toISOString(), telegram_id: telegramId })
+    .eq('code_hash', codeHash)
+    .is('consumed_at', null)
+    .is('revoked_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .select()
+    .maybeSingle();
+  return (data as AccessCodeRow) ?? null;
+}
+
+export async function saveWalletLinkFromCode(input: {
+  telegramId: number;
+  walletAddress: string;
+  chainId: number;
+  balance: bigint;
+  durationDays: number;
+  codeHash: string;
+}): Promise<void> {
+  const now = new Date();
+  const until = new Date(now.getTime() + input.durationDays * 86400_000);
+  await db()
+    .from('telegram_wallet_links')
+    .upsert(
+      {
+        telegram_id: input.telegramId,
+        wallet_address: input.walletAddress.toLowerCase(),
+        chain_id: input.chainId,
+        balance_at_verify: input.balance.toString(),
+        verified_at: now.toISOString(),
+        verified_until: until.toISOString(),
+        signature: `code:${input.codeHash.slice(0, 16)}`,
+        source: 'code',
+      },
+      { onConflict: 'telegram_id' },
+    );
+}
+
+function utcDateKey(d: Date = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function nextUtcMidnightIso(d: Date = new Date()): string {
+  const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+  return next.toISOString();
+}
+
+export interface DailyLimitResult {
+  allowed: boolean;
+  count: number;
+  max: number;
+  remaining: number;
+  resetAt: string;
+}
+
+export async function checkAndIncrementDailyUsage(
+  telegramId: number,
+  command: string,
+  maxPerDay: number,
+): Promise<DailyLimitResult> {
+  const client = db();
+  const usageDate = utcDateKey();
+  const resetAt = nextUtcMidnightIso();
+
+  const { data: existing } = await client
+    .from('telegram_premium_daily_usage')
+    .select('count')
+    .eq('telegram_id', telegramId)
+    .eq('command', command)
+    .eq('usage_date', usageDate)
+    .maybeSingle();
+
+  if (!existing) {
+    const { error } = await client.from('telegram_premium_daily_usage').insert({
+      telegram_id: telegramId,
+      command,
+      usage_date: usageDate,
+      count: 1,
+      updated_at: new Date().toISOString(),
+    });
+    if (error && error.code !== '23505') {
+      throw error;
+    }
+    if (error?.code === '23505') {
+      return checkAndIncrementDailyUsage(telegramId, command, maxPerDay);
+    }
+    return { allowed: true, count: 1, max: maxPerDay, remaining: maxPerDay - 1, resetAt };
+  }
+
+  if (existing.count >= maxPerDay) {
+    return { allowed: false, count: existing.count, max: maxPerDay, remaining: 0, resetAt };
+  }
+
+  const nextCount = existing.count + 1;
+  await client
+    .from('telegram_premium_daily_usage')
+    .update({ count: nextCount, updated_at: new Date().toISOString() })
+    .eq('telegram_id', telegramId)
+    .eq('command', command)
+    .eq('usage_date', usageDate);
+
+  return {
+    allowed: true,
+    count: nextCount,
+    max: maxPerDay,
+    remaining: maxPerDay - nextCount,
+    resetAt,
+  };
+}
+
+export async function peekDailyUsage(
+  telegramId: number,
+  command: string,
+  maxPerDay: number,
+): Promise<DailyLimitResult> {
+  const client = db();
+  const usageDate = utcDateKey();
+  const resetAt = nextUtcMidnightIso();
+
+  const { data } = await client
+    .from('telegram_premium_daily_usage')
+    .select('count')
+    .eq('telegram_id', telegramId)
+    .eq('command', command)
+    .eq('usage_date', usageDate)
+    .maybeSingle();
+
+  const count = data?.count ?? 0;
+  return {
+    allowed: count < maxPerDay,
+    count,
+    max: maxPerDay,
+    remaining: Math.max(0, maxPerDay - count),
+    resetAt,
   };
 }

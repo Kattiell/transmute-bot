@@ -10,6 +10,8 @@ import {
   premiumGateMiddleware,
 } from '../src/gate/middleware';
 import { registerGateCommands, handleStart, buildHelpMessage } from '../src/gate/commands';
+import { checkAndIncrementDailyUsage, logAccess } from '../src/gate/db';
+import { DAILY_LIMITS } from '../src/gate/config';
 
 const token = process.env.TELEGRAM_BOT_TOKEN!;
 const bot = new Telegraf(token);
@@ -43,8 +45,46 @@ bot.help((ctx) => ctx.reply(buildHelpMessage(), { parse_mode: 'HTML' }));
 registerGateCommands(bot);
 
 bot.command('invoke', async (ctx) => {
+  const from = ctx.from;
+  if (!from) return;
+
+  const maxPerDay = DAILY_LIMITS.invoke ?? 3;
+  let usage: Awaited<ReturnType<typeof checkAndIncrementDailyUsage>>;
   try {
-    await ctx.reply('🔮 <b>Invoking the Oracle...</b>\n<i>Scanning Base chain for hidden microcaps. This may take 1-3 minutes.</i>', { parse_mode: 'HTML' });
+    usage = await checkAndIncrementDailyUsage(from.id, 'invoke', maxPerDay);
+  } catch (err) {
+    console.error('[invoke] daily usage check failed', err);
+    await ctx.reply('⚠️ Could not verify daily usage. Please try again.');
+    return;
+  }
+
+  if (!usage.allowed) {
+    const resetMs = new Date(usage.resetAt).getTime() - Date.now();
+    const hours = Math.floor(resetMs / 3600_000);
+    const minutes = Math.floor((resetMs % 3600_000) / 60_000);
+    await logAccess({
+      telegramId: from.id,
+      action: 'cmd:invoke',
+      success: false,
+      reason: 'daily_limit_reached',
+      metadata: { count: usage.count, max: usage.max },
+    });
+    await ctx.reply(
+      `⏳ <b>Daily /invoke limit reached.</b>\n\n` +
+        `You've used <b>${usage.count}/${usage.max}</b> today.\n` +
+        `Resets in <b>${hours}h ${minutes}m</b> (00:00 UTC).`,
+      { parse_mode: 'HTML' },
+    );
+    return;
+  }
+
+  try {
+    await ctx.reply(
+      `🔮 <b>Invoking the Oracle...</b>\n` +
+        `<i>Scanning Base chain for hidden microcaps. This may take 1-3 minutes.</i>\n\n` +
+        `Uses today: <b>${usage.count}/${usage.max}</b>`,
+      { parse_mode: 'HTML' },
+    );
 
     const raw = await invokeOracle();
     const projects = parseOracleOutput(raw);
