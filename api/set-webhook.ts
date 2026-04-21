@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         commands: [
           { command: 'start',  description: 'Start main menu' },
-          { command: 'invoke', description: 'Hunt hidden microcaps (<$600K FDV)' },
+          { command: 'invoke', description: 'Hunt hidden microcaps' },
           { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
           { command: 'myths',  description: 'Narrative tracker (rising stories)' },
           { command: 'pearls', description: 'Daily financial wisdom' },

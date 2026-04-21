@@ -78,17 +78,17 @@ export function formatProjectCard(project: ParsedProject): string {
 
   // Thesis
   if (project.summary) {
-    msg += `📜 <b>THESIS</b>\n${esc(project.summary)}\n\n`;
+    msg += `📜 <b>THESIS</b>\n${escAndFormat(project.summary)}\n\n`;
   }
 
   // Signals
   if (project.signals) {
-    msg += `📡 <b>ON-CHAIN + SOCIAL</b>\n${esc(project.signals)}\n\n`;
+    msg += `📡 <b>ON-CHAIN + SOCIAL</b>\n${escAndFormat(project.signals)}\n\n`;
   }
 
   // Risks
   if (risks) {
-    msg += `⚠️ <b>RISKS</b>\n${esc(risks)}\n\n`;
+    msg += `⚠️ <b>RISKS</b>\n${escAndFormat(risks)}\n\n`;
   }
 
   // Links
@@ -109,7 +109,7 @@ export function formatProjectCard(project: ParsedProject): string {
 
   // Teaching
   if (teaching) {
-    msg += `💡 <b>INSIGHT</b>\n<i>${esc(teaching)}</i>\n`;
+    msg += `💡 <b>INSIGHT</b>\n<i>${escAndFormat(teaching)}</i>\n`;
   }
 
   return msg.trim();

@@ -45,7 +45,7 @@ I channel real-time on-chain intelligence from the Base chain — hidden microca
 
 <b>Commands:</b>
 
-🔮 /invoke — Hunt hidden microcaps (&lt;$600K FDV)
+🔮 /invoke — Hunt hidden microcaps
 📊 /pulse — Market daily report (macro, sentiment, flows)
 🌀 /myths — Narrative tracker (rising stories)
 💎 /pearls — Daily financial wisdom
@@ -166,7 +166,7 @@ bot.help((ctx) => {
   ctx.reply(
     `<b>𓂀 Transmute Oracle — Commands</b>
 
-🔮 /invoke — Hunt hidden microcaps on Base (&lt;$600K FDV)
+🔮 /invoke — Hunt hidden microcaps on Base
 📊 /pulse — Market daily report
 🌀 /myths — Narrative tracker
 💎 /pearls — Daily financial wisdom
@@ -192,7 +192,7 @@ process.once('SIGTERM', () => bot.stop('SIGTERM'));
 bot.launch().then(async () => {
   await bot.telegram.setMyCommands([
     { command: 'start',  description: 'Start main menu' },
-    { command: 'invoke', description: 'Hunt hidden microcaps (<$600K FDV)' },
+    { command: 'invoke', description: 'Hunt hidden microcaps' },
     { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
     { command: 'myths',  description: 'Narrative tracker (rising stories)' },
     { command: 'pearls', description: 'Daily financial wisdom' },
