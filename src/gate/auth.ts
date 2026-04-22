@@ -2,7 +2,7 @@ import { GATE_CONFIG } from './config';
 
 export function buildSignMessage(nonce: string, telegramId: number): string {
   return [
-    'Nous Oracle — Telegram Wallet Link',
+    'Transmute Oracle — Telegram Wallet Link',
     '',
     `Telegram ID: ${telegramId}`,
     `Nonce: ${nonce}`,

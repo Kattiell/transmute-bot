@@ -1,5 +1,5 @@
 /**
- * Exact same prompts used by the Nous web app.
+ * Exact same prompts used by the Transmute web app.
  * Copied verbatim from nous-app/src/lib/api/grok.ts and grok-prompts.ts
  */
 

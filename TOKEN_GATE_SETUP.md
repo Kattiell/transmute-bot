@@ -5,7 +5,7 @@ Premium commands (`/invoke`, `/pulse`, `/myths`, `/pearls`) require a verified w
 
 Two verification paths are supported:
 
-1. **Access code (recommended)** — user generates a 7-day single-use code in the Nous App, then sends `/verify TXM-XXXX-XXXX` in Telegram. Codes are hashed server-side, one active per wallet, revoked when a new one is issued.
+1. **Access code (recommended)** — user generates a 7-day single-use code in the Transmute App, then sends `/verify TXM-XXXX-XXXX` in Telegram. Codes are hashed server-side, one active per wallet, revoked when a new one is issued.
 2. **Signature link** — legacy `/link` flow: bot sends a browser URL where the user connects wallet and signs an off-chain message.
 
 ## Architecture
@@ -30,14 +30,14 @@ In Supabase SQL Editor, run both in order:
 | `TELEGRAM_BOT_TOKEN` | yes | — | BotFather token |
 | `SUPABASE_URL` | yes | — | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | — | Service role key (not anon) |
-| `GATE_TOKEN_ADDRESS` | no | `0x557E...821A` | NOUS ERC-20 on Base |
+| `GATE_TOKEN_ADDRESS` | no | `0x557E...821A` | TRANSMUTE ERC-20 on Base |
 | `GATE_MIN_BALANCE` | no | `25000000` | Whole tokens (integer) |
 | `GATE_INVOKE_DAILY_LIMIT` | no | `3` | Max `/invoke` uses per UTC day |
 | `GATE_CHAIN_ID` | no | `8453` | Base mainnet |
 | `BASE_RPC_1` | no | `https://mainnet.base.org` | Primary RPC |
 | `BASE_RPC_2` | no | `https://base.llamarpc.com` | Failover RPC |
 | `BASE_RPC_3` | no | `https://base-rpc.publicnode.com` | Failover RPC |
-| `GATE_LINK_BASE_URL` | yes | — | e.g. `https://nous-app.vercel.app` |
+| `GATE_LINK_BASE_URL` | yes | — | e.g. `https://transmute-app.vercel.app` |
 | `CRON_SECRET` | yes | — | Random string for cron auth |
 | `GROK_API_KEY` | yes | — | Existing, unchanged |
 
@@ -77,7 +77,7 @@ No special config needed — the bot uses regular `url` inline buttons that open
 
 ### A. Access code (recommended)
 
-1. User opens the Nous App and navigates to **Oracle → Telegram Access** (`/oracle/telegram`).
+1. User opens the Transmute App and navigates to **Oracle → Telegram Access** (`/oracle/telegram`).
 2. Connects wallet (existing RainbowKit gate).
 3. Clicks **Generate Access Code** → signs an off-chain challenge.
 4. Server verifies signature + live on-chain balance (≥ `GATE_MIN_BALANCE`), revokes any prior active code for that wallet, issues a new `TXM-XXXX-XXXX` code, returns it in the response (plaintext shown once; DB stores only SHA-256 hash).
@@ -108,7 +108,7 @@ Vercel Cron calls it with `x-vercel-cron` header. Manual trigger: `curl -H "Auth
 |---|---|---|
 | `/start` | public | Onboarding |
 | `/help` | public | List commands |
-| `/verify CODE` | public (5/5min) | Redeem a code issued by the Nous App |
+| `/verify CODE` | public (5/5min) | Redeem a code issued by the Transmute App |
 | `/verify` (no args) | public | Show link status + live balance |
 | `/redeem CODE` | public | Alias of `/verify CODE` |
 | `/link` | public (rate limited 5/hour) | Generate nonce + signature link button |
@@ -134,7 +134,7 @@ Vercel Cron calls it with `x-vercel-cron` header. Manual trigger: `curl -H "Auth
   - `/link`: 5 per hour per telegram user
   - `/verify CODE`: 5 per 5 minutes per telegram user
   - `/invoke`: `GATE_INVOKE_DAILY_LIMIT` per UTC day per telegram user (auto-reset at 00:00 UTC)
-  - Nous-App IP: 20 code-challenge / 15 code-generate per hour per IP
+  - Transmute-App IP: 20 code-challenge / 15 code-generate per hour per IP
 - **Weekly re-verification**: `verified_until = now + 7d`, auto-purged by cron (both sources).
 - **RPC failover**: 3 RPC endpoints, retry on failure.
 - **Access log**: `telegram_access_log` stores all gate decisions including `tg_code_challenge`, `tg_code_generate`, `code_redeem`, `cmd:invoke` with reasons (`invalid_format`, `not_found`, `revoked`, `already_used`, `expired`, `balance_dropped`, `race_consumed`, `daily_limit_reached`).

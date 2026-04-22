@@ -7,7 +7,7 @@ export const GATE_CONFIG = {
     process.env.BASE_RPC_2 || 'https://base.llamarpc.com',
     process.env.BASE_RPC_3 || 'https://base-rpc.publicnode.com',
   ].filter(Boolean),
-  linkBaseUrl: process.env.GATE_LINK_BASE_URL || 'https://nous-app.vercel.app',
+  linkBaseUrl: process.env.GATE_LINK_BASE_URL || 'https://transmute-app.vercel.app',
   sessionDurationDays: 7,
   nonceTtlMinutes: 10,
   cacheTtlSeconds: 60,

@@ -55,7 +55,7 @@ export const premiumGateMiddleware: MiddlewareFn<Context> = async (ctx, next) =>
   if (!link) {
     await logAccess({ telegramId: from.id, action: `cmd:${cmd}`, success: false, reason: 'no_link' });
     await ctx.reply(
-      `🔒 <b>This is a premium command.</b>\n\nYou need to link a wallet holding at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} NOUS</b> on Base.\n\nRun /link to begin.`,
+      `🔒 <b>This is a premium command.</b>\n\nYou need to link a wallet holding at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> on Base.\n\nRun /link to begin.`,
       { parse_mode: 'HTML' }
     );
     return;
@@ -88,7 +88,7 @@ export const premiumGateMiddleware: MiddlewareFn<Context> = async (ctx, next) =>
         metadata: { balance: balance.raw.toString() },
       });
       await ctx.reply(
-        `❌ <b>Insufficient token balance.</b>\n\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> NOUS\nRequired: <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')}</b> NOUS\n\nAcquire more tokens or /relink a different wallet.`,
+        `❌ <b>Insufficient token balance.</b>\n\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\nRequired: <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')}</b> $TRANSMUTE\n\nAcquire more tokens or /relink a different wallet.`,
         { parse_mode: 'HTML' }
       );
       return;

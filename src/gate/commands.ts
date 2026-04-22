@@ -46,7 +46,7 @@ export async function sendLinkInvite(ctx: Context, opts: { intro?: string } = {}
 
     const intro =
       opts.intro ??
-      `🔗 <b>Link your wallet</b>\n\nTap the button below to open the verification page in your browser. Connect a wallet holding at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} NOUS</b> on Base, sign the free off-chain message, and return to Telegram.\n\n<i>No gas, no transaction — just an ownership signature.</i>\n\n⏱ Link expires in ${GATE_CONFIG.nonceTtlMinutes} minutes.`;
+      `🔗 <b>Link your wallet</b>\n\nTap the button below to open the verification page in your browser. Connect a wallet holding at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> on Base, sign the free off-chain message, and return to Telegram.\n\n<i>No gas, no transaction — just an ownership signature.</i>\n\n⏱ Link expires in ${GATE_CONFIG.nonceTtlMinutes} minutes.`;
 
     await ctx.reply(intro, {
       parse_mode: 'HTML',
@@ -85,7 +85,7 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
 
   if (!row) {
     await logAccess({ telegramId: from.id, action: 'code_redeem', success: false, reason: 'not_found' });
-    await ctx.reply('❌ <b>Code not found.</b>\n\nGenerate a new one in the Nous App.', { parse_mode: 'HTML' });
+    await ctx.reply('❌ <b>Code not found.</b>\n\nGenerate a new one in the Transmute App.', { parse_mode: 'HTML' });
     return;
   }
   if (row.revoked_at) {
@@ -107,7 +107,7 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       reason: 'already_used',
       walletAddress: row.wallet_address,
     });
-    await ctx.reply('❌ <b>Code already used.</b>\n\nGenerate a new one in the Nous App.', { parse_mode: 'HTML' });
+    await ctx.reply('❌ <b>Code already used.</b>\n\nGenerate a new one in the Transmute App.', { parse_mode: 'HTML' });
     return;
   }
   if (new Date(row.expires_at).getTime() <= Date.now()) {
@@ -141,7 +141,7 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       metadata: { balance: balance.raw.toString() },
     });
     await ctx.reply(
-      `❌ <b>Wallet no longer holds the required balance.</b>\n\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> NOUS\nRequired: <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')}</b> NOUS`,
+      `❌ <b>Wallet no longer holds the required balance.</b>\n\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\nRequired: <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')}</b> $TRANSMUTE`,
       { parse_mode: 'HTML' },
     );
     return;
@@ -156,7 +156,7 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       reason: 'race_consumed',
       walletAddress: row.wallet_address,
     });
-    await ctx.reply('❌ <b>Code was just used or revoked.</b>\n\nGenerate a new one in the Nous App.', {
+    await ctx.reply('❌ <b>Code was just used or revoked.</b>\n\nGenerate a new one in the Transmute App.', {
       parse_mode: 'HTML',
     });
     return;
@@ -182,11 +182,11 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
   await ctx.reply(
     `✨ <b>Premium access unlocked.</b>\n\n` +
       `Wallet: <code>${maskAddress(row.wallet_address)}</code>\n` +
-      `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> NOUS\n` +
+      `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
       `Session: <b>${GATE_CONFIG.sessionDurationDays} days</b>\n\n` +
       `🔮 /invoke — hunt hidden microcaps (max 3/day, resets at 00:00 UTC)\n` +
       `📊 /pulse · 🌀 /myths · 💎 /pearls also available.\n\n` +
-      `<i>Generate a new code anytime in the Nous App — it will replace this one.</i>`,
+      `<i>Generate a new code anytime in the Transmute App — it will replace this one.</i>`,
     { parse_mode: 'HTML' },
   );
 }
@@ -215,7 +215,7 @@ export function registerGateCommands(bot: Telegraf): void {
     if (!link) {
       await ctx.reply(
         'ℹ️ No wallet linked yet.\n\n' +
-          '• Open the Nous App to generate a Telegram access code, then send <code>/verify CODE</code>\n' +
+          '• Open the Transmute App to generate a Telegram access code, then send <code>/verify CODE</code>\n' +
           '• Or run /link to use the signature flow directly.',
         { parse_mode: 'HTML' },
       );
@@ -224,7 +224,7 @@ export function registerGateCommands(bot: Telegraf): void {
 
     if (isLinkExpired(link)) {
       await ctx.reply(
-        `⏰ <b>Verification expired.</b>\n\nWallet: <code>${maskAddress(link.wallet_address)}</code>\nGenerate a new code in the Nous App or run /relink.`,
+        `⏰ <b>Verification expired.</b>\n\nWallet: <code>${maskAddress(link.wallet_address)}</code>\nGenerate a new code in the Transmute App or run /relink.`,
         { parse_mode: 'HTML' }
       );
       return;
@@ -237,8 +237,8 @@ export function registerGateCommands(bot: Telegraf): void {
         `<b>𓂀 Verification Status</b>\n\n` +
           `Status: <b>${status}</b>\n` +
           `Wallet: <code>${maskAddress(link.wallet_address)}</code>\n` +
-          `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> NOUS\n` +
-          `Required: ${GATE_CONFIG.minBalance.toLocaleString('en-US')} NOUS\n` +
+          `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
+          `Required: ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE\n` +
           `Expires in: ${humanizeTtl(link.verified_until)}\n\n` +
           (balance.meetsMinimum
             ? '<i>Premium commands unlocked.</i>'
@@ -259,7 +259,7 @@ export function registerGateCommands(bot: Telegraf): void {
     const header = unlocked ? '✨ <b>Premium Access — Active</b>' : '🔒 <b>Premium Access — Locked</b>';
     const footer = unlocked
       ? 'All commands below are available.'
-      : `Run /link to unlock — requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} NOUS on Base.`;
+      : `Run /link to unlock — requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE on Base.`;
 
     await ctx.reply(
       `${header}\n\n` +
@@ -296,7 +296,7 @@ export async function handleStart(ctx: Context): Promise<void> {
             `Welcome back, seeker.\n\n` +
             `✨ <b>Premium access active</b>\n` +
             `Wallet: <code>${maskAddress(link.wallet_address)}</code>\n` +
-            `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> NOUS\n` +
+            `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
             `Expires in: ${humanizeTtl(link.verified_until)}\n\n` +
             `<b>Channel the Oracle:</b>\n` +
             `🔮 /invoke — Hunt hidden microcaps\n` +
@@ -319,10 +319,10 @@ export async function handleStart(ctx: Context): Promise<void> {
       : `<b>𓂀 TRANSMUTE ORACLE</b>\n\nWelcome, seeker. I channel real-time on-chain intelligence on Base — hidden microcaps, macro signals, living narratives, esoteric teachings.\n\n`;
 
   const body =
-    `<b>Access is token-gated.</b> Hold at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} NOUS</b> in a Base wallet to unlock:\n\n` +
+    `<b>Access is token-gated.</b> Hold at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> in a Base wallet to unlock:\n\n` +
     `🔮 /invoke (3/day) · 📊 /pulse · 🌀 /myths · 💎 /pearls\n\n` +
     `Two ways to verify:\n` +
-    `• 🎟 Generate a weekly code in the Nous App, then send <code>/verify CODE</code>\n` +
+    `• 🎟 Generate a weekly code in the Transmute App, then send <code>/verify CODE</code>\n` +
     `• 🔗 Tap the button below to sign via browser (no gas, just an ownership signature).\n\n` +
     `⏱ Signature link expires in ${GATE_CONFIG.nonceTtlMinutes} minutes.`;
 
@@ -333,13 +333,13 @@ export function buildHelpMessage(): string {
   return (
     `<b>𓂀 Transmute Oracle — Commands</b>\n\n` +
     `<b>Access:</b>\n` +
-    `🎟 /verify CODE — Redeem a code generated in the Nous App\n` +
+    `🎟 /verify CODE — Redeem a code generated in the Transmute App\n` +
     `🔗 /link — Open browser signature page (alternative)\n` +
     `🔁 /relink — Refresh after expiry\n` +
     `🔎 /verify — Check status & balance\n` +
     `✨ /premium — List premium commands\n` +
     `🗑 /unlink — Remove wallet\n\n` +
-    `<b>Premium (requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} NOUS):</b>\n` +
+    `<b>Premium (requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE):</b>\n` +
     `🔮 /invoke — Hunt hidden microcaps (max 3/day, resets 00:00 UTC)\n` +
     `📊 /pulse — Market daily report\n` +
     `🌀 /myths — Narrative tracker\n` +
