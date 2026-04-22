@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.3",
+    "@vercel/functions": "^2.0.0",
     "dotenv": "^16.4.7",
     "siwe": "^3.0.0",
     "telegraf": "^4.16.3",

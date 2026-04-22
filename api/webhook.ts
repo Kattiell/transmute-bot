@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { waitUntil } from '@vercel/functions';
 import { Telegraf } from 'telegraf';
 import { invokeOracle, invokeOracleWithPrompt } from '../src/grok';
 import { parseOracleOutput } from '../src/parser';
@@ -144,21 +145,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ ok: true, message: 'Transmute Oracle Bot is alive' });
   }
 
-  // ACK Telegram immediately. Long-running commands like /invoke take 1-3 min;
-  // Telegram webhooks time out at ~60s and retry up to ~25x, which would re-fire
-  // the same command repeatedly. Responding 200 first lets the handler keep
-  // running in the background until maxDuration (300s).
-  res.status(200).json({ ok: true });
-
+  // Long-running commands like /invoke take 1-3 min, but Telegram times out
+  // webhooks at ~60s and retries on timeout (up to ~25x). waitUntil tells
+  // Vercel to keep the Lambda alive past res.end() until the promise settles
+  // (bounded by maxDuration=300s), so we can ACK Telegram now and still run
+  // the oracle in the background without triggering duplicate deliveries.
   const updateId = (req.body as { update_id?: number } | undefined)?.update_id;
-  if (typeof updateId === 'number' && !(await claimTelegramUpdate(updateId))) {
-    console.warn('[webhook] duplicate update_id suppressed:', updateId);
-    return;
-  }
 
-  try {
-    await bot.handleUpdate(req.body);
-  } catch (err) {
-    console.error('[webhook] Error handling update:', err);
-  }
+  waitUntil(
+    (async () => {
+      if (typeof updateId === 'number' && !(await claimTelegramUpdate(updateId))) {
+        console.warn('[webhook] duplicate update_id suppressed:', updateId);
+        return;
+      }
+      try {
+        await bot.handleUpdate(req.body);
+      } catch (err) {
+        console.error('[webhook] Error handling update:', err);
+      }
+    })(),
+  );
+
+  res.status(200).json({ ok: true });
 }
