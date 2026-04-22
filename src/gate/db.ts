@@ -245,6 +245,7 @@ export async function cleanupExpired(): Promise<{
   codes: number;
   challenges: number;
   dailyUsage: number;
+  processedUpdates: number;
 }> {
   const client = db();
   const now = new Date().toISOString();
@@ -252,7 +253,7 @@ export async function cleanupExpired(): Promise<{
   const oneHourAgo = new Date(Date.now() - 3600_000).toISOString();
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
 
-  const [links, nonces, logs, cache, codes, challenges, dailyUsage] = await Promise.all([
+  const [links, nonces, logs, cache, codes, challenges, dailyUsage, processedUpdates] = await Promise.all([
     client.from('telegram_wallet_links').delete().lt('verified_until', now).select('telegram_id'),
     client.from('telegram_auth_nonces').delete().lt('expires_at', now).select('nonce'),
     client.from('telegram_access_log').delete().lt('created_at', thirtyDaysAgo).select('id'),
@@ -260,6 +261,7 @@ export async function cleanupExpired(): Promise<{
     client.from('telegram_access_codes').delete().lt('expires_at', now).select('id'),
     client.from('telegram_code_challenges').delete().lt('expires_at', now).select('nonce'),
     client.from('telegram_premium_daily_usage').delete().lt('usage_date', sevenDaysAgo).select('telegram_id'),
+    client.from('telegram_processed_updates').delete().lt('processed_at', oneHourAgo).select('update_id'),
   ]);
 
   return {
@@ -270,6 +272,7 @@ export async function cleanupExpired(): Promise<{
     codes: codes.data?.length ?? 0,
     challenges: challenges.data?.length ?? 0,
     dailyUsage: dailyUsage.data?.length ?? 0,
+    processedUpdates: processedUpdates.data?.length ?? 0,
   };
 }
 
@@ -353,6 +356,24 @@ export interface DailyLimitResult {
   remaining: number;
   resetAt: string;
   unlimited?: boolean;
+}
+
+/**
+ * Claim a Telegram update_id so duplicate webhook deliveries don't re-fire
+ * long-running commands (e.g. retries Telegram queues when a webhook times
+ * out). Returns true if this process is the first to claim the id.
+ */
+export async function claimTelegramUpdate(updateId: number): Promise<boolean> {
+  if (!Number.isFinite(updateId)) return true;
+  const { error } = await db()
+    .from('telegram_processed_updates')
+    .insert({ update_id: updateId });
+  if (!error) return true;
+  // 23505 = unique_violation -> already processed by another invocation
+  if ((error as { code?: string }).code === '23505') return false;
+  // Table missing or other error -> don't block processing
+  console.warn('[claimTelegramUpdate] non-fatal', error);
+  return true;
 }
 
 export async function isUnlimitedWallet(walletAddress?: string | null): Promise<boolean> {

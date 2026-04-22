@@ -10,7 +10,7 @@ import {
   premiumGateMiddleware,
 } from '../src/gate/middleware';
 import { registerGateCommands, handleStart, buildHelpMessage } from '../src/gate/commands';
-import { checkAndIncrementDailyUsage, getWalletLink, logAccess } from '../src/gate/db';
+import { checkAndIncrementDailyUsage, claimTelegramUpdate, getWalletLink, logAccess } from '../src/gate/db';
 import { DAILY_LIMITS } from '../src/gate/config';
 
 const token = process.env.TELEGRAM_BOT_TOKEN!;
@@ -144,11 +144,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ ok: true, message: 'Transmute Oracle Bot is alive' });
   }
 
+  // ACK Telegram immediately. Long-running commands like /invoke take 1-3 min;
+  // Telegram webhooks time out at ~60s and retry up to ~25x, which would re-fire
+  // the same command repeatedly. Responding 200 first lets the handler keep
+  // running in the background until maxDuration (300s).
+  res.status(200).json({ ok: true });
+
+  const updateId = (req.body as { update_id?: number } | undefined)?.update_id;
+  if (typeof updateId === 'number' && !(await claimTelegramUpdate(updateId))) {
+    console.warn('[webhook] duplicate update_id suppressed:', updateId);
+    return;
+  }
+
   try {
     await bot.handleUpdate(req.body);
   } catch (err) {
     console.error('[webhook] Error handling update:', err);
   }
-
-  res.status(200).json({ ok: true });
 }

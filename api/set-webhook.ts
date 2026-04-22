@@ -16,6 +16,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const host = req.headers.host;
   const webhookUrl = `https://${host}/api/webhook`;
 
+  // ?drop=1 flushes any stuck retries Telegram has queued
+  const dropPendingUpdates = req.query.drop === '1' || req.query.drop === 'true';
+
   const response = await fetch(
     `https://api.telegram.org/bot${token}/setWebhook`,
     {
@@ -25,6 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         url: webhookUrl,
         allowed_updates: ['message'],
         max_connections: 10,
+        drop_pending_updates: dropPendingUpdates,
       }),
     }
   );
