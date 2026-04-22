@@ -10,7 +10,7 @@ import {
   premiumGateMiddleware,
 } from '../src/gate/middleware';
 import { registerGateCommands, handleStart, buildHelpMessage } from '../src/gate/commands';
-import { checkAndIncrementDailyUsage, logAccess } from '../src/gate/db';
+import { checkAndIncrementDailyUsage, getWalletLink, logAccess } from '../src/gate/db';
 import { DAILY_LIMITS } from '../src/gate/config';
 
 const token = process.env.TELEGRAM_BOT_TOKEN!;
@@ -49,9 +49,10 @@ bot.command('invoke', async (ctx) => {
   if (!from) return;
 
   const maxPerDay = DAILY_LIMITS.invoke ?? 3;
+  const link = await getWalletLink(from.id).catch(() => null);
   let usage: Awaited<ReturnType<typeof checkAndIncrementDailyUsage>>;
   try {
-    usage = await checkAndIncrementDailyUsage(from.id, 'invoke', maxPerDay);
+    usage = await checkAndIncrementDailyUsage(from.id, 'invoke', maxPerDay, link?.wallet_address);
   } catch (err) {
     console.error('[invoke] daily usage check failed', err);
     await ctx.reply('⚠️ Could not verify daily usage. Please try again.');
@@ -79,10 +80,13 @@ bot.command('invoke', async (ctx) => {
   }
 
   try {
+    const usesLine = usage.unlimited
+      ? 'Uses today: <b>∞ (unlimited)</b>'
+      : `Uses today: <b>${usage.count}/${usage.max}</b>`;
     await ctx.reply(
       `🔮 <b>Invoking the Oracle...</b>\n` +
         `<i>Scanning Base chain for hidden microcaps. This may take 1-3 minutes.</i>\n\n` +
-        `Uses today: <b>${usage.count}/${usage.max}</b>`,
+        usesLine,
       { parse_mode: 'HTML' },
     );
 

@@ -352,16 +352,39 @@ export interface DailyLimitResult {
   max: number;
   remaining: number;
   resetAt: string;
+  unlimited?: boolean;
+}
+
+export async function isUnlimitedWallet(walletAddress?: string | null): Promise<boolean> {
+  if (!walletAddress) return false;
+  const { data } = await db()
+    .from('oracle_unlimited_wallets')
+    .select('wallet_address')
+    .eq('wallet_address', walletAddress.toLowerCase())
+    .maybeSingle();
+  return !!data;
 }
 
 export async function checkAndIncrementDailyUsage(
   telegramId: number,
   command: string,
   maxPerDay: number,
+  walletAddress?: string | null,
 ): Promise<DailyLimitResult> {
   const client = db();
   const usageDate = utcDateKey();
   const resetAt = nextUtcMidnightIso();
+
+  if (await isUnlimitedWallet(walletAddress)) {
+    return {
+      allowed: true,
+      count: 0,
+      max: Number.POSITIVE_INFINITY,
+      remaining: Number.POSITIVE_INFINITY,
+      resetAt,
+      unlimited: true,
+    };
+  }
 
   const { data: existing } = await client
     .from('telegram_premium_daily_usage')
