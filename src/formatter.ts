@@ -9,11 +9,41 @@ function esc(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-/** Escape HTML then convert **bold** and *italic* to HTML tags */
+/** Escape HTML then convert markdown (bold/italic/code/headings/lists) to Telegram HTML */
 function escAndFormat(text: string): string {
-  return esc(text)
-    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-    .replace(/\*([^*]+)\*/g, '<i>$1</i>');
+  let out = esc(text);
+
+  // Fenced code blocks ```lang\n...\n```
+  out = out.replace(/```[a-zA-Z0-9_+-]*\n?([\s\S]*?)```/g, (_m, body: string) => `<pre>${body.replace(/\n+$/, '')}</pre>`);
+
+  // Inline code `...`
+  out = out.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+  // Bold-italic ***text*** -> <b><i>text</i></b>  (must run before ** and *)
+  out = out.replace(/\*\*\*([\s\S]+?)\*\*\*/g, '<b><i>$1</i></b>');
+
+  // Bold **text** — lazy, cross-line
+  out = out.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
+
+  // Bold __text__ (Grok sometimes emits this)
+  out = out.replace(/__([\s\S]+?)__/g, '<b>$1</b>');
+
+  // Italic *text* — lazy, single line, require non-space boundaries so we don't eat lone asterisks
+  out = out.replace(/(^|[^*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/g, '$1<i>$2</i>');
+
+  // Italic _text_ — single-line, word-ish boundaries
+  out = out.replace(/(^|[^_\w])_(?!\s)([^_\n]+?)(?<!\s)_(?!\w)/g, '$1<i>$2</i>');
+
+  // Markdown headings "# ...", "## ..." -> bold line
+  out = out.replace(/^\s{0,3}#{1,6}\s+(.+)$/gm, '<b>$1</b>');
+
+  // Markdown bullets "- " / "* " at start of line -> "• "
+  out = out.replace(/^\s{0,3}[-*]\s+/gm, '• ');
+
+  // Strip leftover stray double-asterisks that didn't pair up, to avoid literal ** in output
+  out = out.replace(/\*\*+/g, '');
+
+  return out;
 }
 
 function riskEmoji(risk: number | null): string {
