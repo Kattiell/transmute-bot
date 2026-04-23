@@ -148,25 +148,40 @@ export function formatProjectCard(project: ParsedProject): string {
 export function formatWhispersReport(projects: ParsedProject[]): string[] {
   const messages: string[] = [];
 
-  // Header
   let header = '𓂀 <b>TRANSMUTE ORACLE</b>\n';
   header += '<b>Hidden Microcaps — Base Chain</b>\n';
   header += `<i>${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</i>\n\n`;
   header += `Found <b>${projects.length}</b> signal${projects.length !== 1 ? 's' : ''} below $600K FDV`;
-  messages.push(header);
 
-  // Each card as a separate message
-  for (const project of projects) {
-    messages.push(formatProjectCard(project));
-  }
-
-  // Footer
-  messages.push(
+  const footer =
     '━━━━━━━━━━━━━━━\n' +
     '⚠️ <b>Sacred Warning</b>\n' +
     '<i>This is observation, not prophecy. Always DYOR - NFA.</i>\n\n' +
-    '𓂀 <i>Transmute Oracle — Signal before attention</i>'
-  );
+    '𓂀 <i>Transmute Oracle — Signal before attention</i>';
+
+  // Bundle header + cards + footer into as few messages as possible under the
+  // 4096-char Telegram limit. Fewer messages = far less time spent waiting on
+  // Telegram's per-group rate limits (20/min).
+  const MAX_LEN = 3900;
+  const SEPARATOR = '\n\n━━━━━━━━━━━━━━━\n\n';
+
+  const chunks: string[] = [header, ...projects.map(formatProjectCard), footer];
+
+  let current = '';
+  for (const chunk of chunks) {
+    if (!current) {
+      current = chunk;
+      continue;
+    }
+    const candidate = current + SEPARATOR + chunk;
+    if (candidate.length <= MAX_LEN) {
+      current = candidate;
+    } else {
+      messages.push(current);
+      current = chunk;
+    }
+  }
+  if (current) messages.push(current);
 
   return messages;
 }

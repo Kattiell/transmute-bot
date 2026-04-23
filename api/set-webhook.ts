@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         url: webhookUrl,
         allowed_updates: ['message'],
-        max_connections: 10,
+        max_connections: 40,
         drop_pending_updates: dropPendingUpdates,
       }),
     }

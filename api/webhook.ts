@@ -21,7 +21,17 @@ bot.use(identityMiddleware);
 bot.use(globalRateLimitMiddleware);
 bot.use(premiumGateMiddleware);
 
-async function sendMessages(chatId: number, messages: string[]): Promise<void> {
+// Telegram throttles bots to ~20 msgs/min per group (1 per ~3s). In private
+// chats the limit is ~1/sec. Spacing sends below these caps avoids 429 storms
+// that can stretch a multi-message report to 10+ minutes in groups.
+async function sendMessages(
+  chatId: number,
+  messages: string[],
+  chatType: 'private' | 'group' | 'supergroup' | 'channel' = 'private',
+): Promise<void> {
+  const isGroup = chatType === 'group' || chatType === 'supergroup';
+  const delayMs = isGroup ? 3100 : 500;
+
   for (const msg of messages) {
     if (!msg.trim()) continue;
     try {
@@ -34,7 +44,7 @@ async function sendMessages(chatId: number, messages: string[]): Promise<void> {
       const plain = msg.replace(/<[^>]+>/g, '');
       await bot.telegram.sendMessage(chatId, plain);
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, delayMs));
   }
 }
 
@@ -96,11 +106,11 @@ bot.command('invoke', async (ctx) => {
 
     if (projects.length === 0) {
       const messages = formatGenericReport('ORACLE SCAN REPORT', raw);
-      await sendMessages(ctx.chat.id, messages);
+      await sendMessages(ctx.chat.id, messages, ctx.chat.type);
       return;
     }
 
-    await sendMessages(ctx.chat.id, formatWhispersReport(projects));
+    await sendMessages(ctx.chat.id, formatWhispersReport(projects), ctx.chat.type);
   } catch (err) {
     console.error('[invoke]', err);
     await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
@@ -111,7 +121,7 @@ bot.command('pulse', async (ctx) => {
   try {
     await ctx.reply('📊 <b>Channeling the Pulse...</b>\n<i>Aggregating macro, sentiment, and on-chain flows. 1-3 minutes.</i>', { parse_mode: 'HTML' });
     const raw = await invokeOracleWithPrompt(PULSE_PROMPT);
-    await sendMessages(ctx.chat.id, formatGenericReport('MARKET DAILY REPORT', raw));
+    await sendMessages(ctx.chat.id, formatGenericReport('MARKET DAILY REPORT', raw), ctx.chat.type);
   } catch (err) {
     console.error('[pulse]', err);
     await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
@@ -122,7 +132,7 @@ bot.command('myths', async (ctx) => {
   try {
     await ctx.reply('🌀 <b>Unveiling the Myths...</b>\n<i>Tracking living narratives. 1-3 minutes.</i>', { parse_mode: 'HTML' });
     const raw = await invokeOracleWithPrompt(MYTHS_PROMPT);
-    await sendMessages(ctx.chat.id, formatGenericReport('NARRATIVE TRACKER', raw));
+    await sendMessages(ctx.chat.id, formatGenericReport('NARRATIVE TRACKER', raw), ctx.chat.type);
   } catch (err) {
     console.error('[myths]', err);
     await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
@@ -133,7 +143,7 @@ bot.command('pearls', async (ctx) => {
   try {
     await ctx.reply('💎 <b>Summoning a Pearl...</b>\n<i>The Oracle prepares a teaching. 1-2 minutes.</i>', { parse_mode: 'HTML' });
     const raw = await invokeOracleWithPrompt(PEARLS_PROMPT);
-    await sendMessages(ctx.chat.id, formatGenericReport('PEARL OF KNOWLEDGE', raw));
+    await sendMessages(ctx.chat.id, formatGenericReport('PEARL OF KNOWLEDGE', raw), ctx.chat.type);
   } catch (err) {
     console.error('[pearls]', err);
     await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
