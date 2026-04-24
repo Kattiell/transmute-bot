@@ -15,7 +15,10 @@ import { checkAndIncrementDailyUsage, claimTelegramUpdate, getWalletLink, logAcc
 import { DAILY_LIMITS } from '../src/gate/config';
 
 const token = process.env.TELEGRAM_BOT_TOKEN!;
-const bot = new Telegraf(token);
+// Default Telegraf handlerTimeout is 90s; /invoke can take 1-3 min in the
+// Grok web_search call. Push it to just under the Vercel Lambda limit (300s)
+// so the oracle finishes and the final report actually sends.
+const bot = new Telegraf(token, { handlerTimeout: 290_000 });
 
 bot.use(identityMiddleware);
 bot.use(globalRateLimitMiddleware);
