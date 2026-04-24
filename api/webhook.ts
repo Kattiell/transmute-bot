@@ -101,16 +101,20 @@ bot.command('invoke', async (ctx) => {
       { parse_mode: 'HTML' },
     );
 
+    const tOracleStart = Date.now();
     const raw = await invokeOracle();
+    console.log(`[invoke] oracle done in ${Date.now() - tOracleStart}ms chat=${ctx.chat.type}`);
+
     const projects = parseOracleOutput(raw);
 
+    const tSendStart = Date.now();
     if (projects.length === 0) {
       const messages = formatGenericReport('ORACLE SCAN REPORT', raw);
       await sendMessages(ctx.chat.id, messages, ctx.chat.type);
-      return;
+    } else {
+      await sendMessages(ctx.chat.id, formatWhispersReport(projects), ctx.chat.type);
     }
-
-    await sendMessages(ctx.chat.id, formatWhispersReport(projects), ctx.chat.type);
+    console.log(`[invoke] send done in ${Date.now() - tSendStart}ms projects=${projects.length}`);
   } catch (err) {
     console.error('[invoke]', err);
     await ctx.reply('❌ The Oracle encountered an error. Please try again later.');

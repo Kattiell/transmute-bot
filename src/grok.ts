@@ -41,26 +41,50 @@ async function callGrok(prompt: string): Promise<string> {
   const apiKey = process.env.GROK_API_KEY;
   if (!apiKey) throw new Error('GROK_API_KEY not configured');
 
-  const res = await fetch(GROK_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'grok-4.20-reasoning',
-      input: prompt,
-      tools: [{ type: 'web_search' }],
-    }),
-  });
+  // Hard-cap the Grok call so a hung API request can't silently eat the whole
+  // 300s Lambda budget. 240s leaves 60s for parsing + Telegram sends.
+  const controller = new AbortController();
+  const timeoutMs = 240_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Grok API error ${res.status}: ${body}`);
+  const start = Date.now();
+  console.log('[grok] call start');
+
+  try {
+    const res = await fetch(GROK_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'grok-4.20-reasoning',
+        input: prompt,
+        tools: [{ type: 'web_search' }],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Grok API error ${res.status}: ${body}`);
+    }
+
+    const data = (await res.json()) as Record<string, unknown>;
+    const elapsed = Date.now() - start;
+    console.log(`[grok] call ok in ${elapsed}ms`);
+    return extractTextFromGrokResponse(data);
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    if (controller.signal.aborted) {
+      console.error(`[grok] call timed out after ${elapsed}ms`);
+      throw new Error(`Grok API timed out after ${timeoutMs / 1000}s`);
+    }
+    console.error(`[grok] call failed in ${elapsed}ms`, err);
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = (await res.json()) as Record<string, unknown>;
-  return extractTextFromGrokResponse(data);
 }
 
 export async function invokeOracle(): Promise<string> {
