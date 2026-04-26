@@ -37,14 +37,16 @@ import {
   getPendingCall,
   getSubmission,
   isGroupSubscribed,
+  listActiveGroupIds,
   listCallsInWindow,
   listOptedInDmTargets,
-  listSubscribedGroupIds,
+  markGroupLeft,
   markSubmissionReviewed,
   recentCallByCaller,
   removeGroupSubscription,
   setDmOptOut,
   setPendingCallStep,
+  upsertGroupMembership,
 } from '../src/oracle/calls';
 import {
   formatAdminReviewMessage,
@@ -659,6 +661,33 @@ bot.command('optin', async (ctx) => {
   await ctx.reply('🔔 <b>Pantheon broadcasts re-enabled.</b>', { parse_mode: 'HTML' });
 });
 
+// Auto-track every group/supergroup/channel the bot joins, so approved calls
+// broadcast to all of them without anyone running /subscribe.
+bot.on('my_chat_member', async (ctx) => {
+  const update = ctx.myChatMember;
+  if (!update) return;
+  const chat = update.chat;
+  if (chat.type !== 'group' && chat.type !== 'supergroup' && chat.type !== 'channel') return;
+
+  const status = update.new_chat_member.status;
+  const isMember = status === 'creator' || status === 'administrator' || status === 'member';
+  const isGone = status === 'left' || status === 'kicked';
+
+  try {
+    if (isMember) {
+      await upsertGroupMembership({
+        chatId: chat.id,
+        chatTitle: 'title' in chat ? chat.title ?? null : null,
+        chatType: chat.type,
+      });
+    } else if (isGone) {
+      await markGroupLeft(chat.id);
+    }
+  } catch (err) {
+    console.warn('[my_chat_member] track failed', err);
+  }
+});
+
 bot.command('status', async (ctx) => {
   if (!ctx.chat || ctx.chat.type === 'private') {
     await ctx.reply(
@@ -686,8 +715,11 @@ bot.command('status', async (ctx) => {
  *   429 — rate limit. Honor `retry_after` from Telegram's response.
  *   400 — chat not found / banned. Skip silently.
  * Anything else: log warning and continue.
+ *
+ * Returns true when delivery succeeded, false otherwise. Callers use the false
+ * signal to garbage-collect dead chats from the active broadcast list.
  */
-async function sendBroadcast(chatId: number, text: string): Promise<void> {
+async function sendBroadcast(chatId: number, text: string): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       await bot.telegram.sendMessage(chatId, text, {
@@ -695,28 +727,31 @@ async function sendBroadcast(chatId: number, text: string): Promise<void> {
         // @ts-expect-error - Telegraf types may lag behind API
         disable_web_page_preview: true,
       });
-      return;
+      return true;
     } catch (err) {
       const e = err as { code?: number; response?: { parameters?: { retry_after?: number } } };
-      if (e.code === 403 || e.code === 400) return;
+      if (e.code === 403 || e.code === 400) return false;
       if (e.code === 429) {
         const retry = e.response?.parameters?.retry_after ?? 1;
         await new Promise((r) => setTimeout(r, Math.min(retry, 30) * 1000));
         continue;
       }
       console.warn(`[broadcast] ${chatId} failed`, err);
-      return;
+      return false;
     }
   }
+  return false;
 }
 
 async function broadcastApprovedCall(call: Awaited<ReturnType<typeof createApprovedCall>>): Promise<void> {
   const text = formatCallAlert(call);
 
-  // Subscribed groups first (3.1s/msg pacing applies per-chat).
-  const groupIds = await listSubscribedGroupIds().catch(() => [] as number[]);
+  // Every group/supergroup/channel the bot is currently in (auto-tracked via
+  // my_chat_member). 3.1s/msg pacing per-chat avoids Telegram's 20/min cap.
+  const groupIds = await listActiveGroupIds().catch(() => [] as number[]);
   for (const chatId of groupIds) {
-    await sendBroadcast(chatId, text);
+    const ok = await sendBroadcast(chatId, text);
+    if (!ok) await markGroupLeft(chatId).catch(() => undefined);
     await new Promise((r) => setTimeout(r, 3100));
   }
 

@@ -52,34 +52,26 @@ export function formatCallAlert(call: OracleCall): string {
   const ticker = call.ticker ? `$${call.ticker.toUpperCase()}` : 'TOKEN';
   const name = call.name ?? '';
   const fdv = fmtUsd(call.fdv_at_call);
-  const liq = fmtUsd(call.liquidity_at_call);
 
-  const dexLine = call.dexscreener_url
-    ? `📈 <a href="${esc(call.dexscreener_url)}">DexScreener</a>`
-    : '';
-  const basescanLine = `🔍 <a href="https://basescan.org/token/${esc(call.contract_address)}">Basescan</a>`;
+  const dexLink = call.dexscreener_url
+    ? `<a href="${esc(call.dexscreener_url)}">DEX</a>`
+    : 'DEX';
 
   return [
     `𓂀 <b>TRANSMUTE ORACLE — Pantheon Call</b>`,
-    `<i>By ${esc(handle)} — 𓂀 PANTHEON</i>`,
+    `By ${esc(handle)} · ☿ PANTHEON`,
     '',
-    `▣ <b>${esc(ticker)}</b>${name ? ` <i>(${esc(name)})</i>` : ''}`,
+    `▣ <b>${esc(ticker)}</b>${name ? ` <i>${esc(name)}</i>` : ''} · 📦 Base · 📈 ${dexLink}`,
     `<code>${esc(call.contract_address)}</code>`,
     '',
-    `🚀 <b>Called:</b> ${esc(fdv)} FDV`,
-    `💧 <b>Liquidity:</b> ${esc(liq)}`,
+    `🟢 <b>Called:</b> @${esc(fdv)} FDV`,
     '',
-    `📜 <b>Thesis</b>`,
-    `<i>${esc(call.thesis)}</i>`,
-    '',
-    `${dexLine}${dexLine ? '   ' : ''}${basescanLine}`,
+    `📜 <i>${esc(call.thesis)}</i>`,
     '',
     '━━━━━━━━━━━━━━━',
     '⚠️ <b>Sacred Warning</b>',
-    '<i>This is observation, not prophecy. Always DYOR - NFA.</i>',
-  ]
-    .filter((line) => line !== null)
-    .join('\n');
+    '<i>This is observation, not prophecy. Always DYOR — NFA.</i>',
+  ].join('\n');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

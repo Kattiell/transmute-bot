@@ -371,6 +371,47 @@ export async function listSubscribedGroupIds(): Promise<number[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Group membership tracking (auto-populated via my_chat_member)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function upsertGroupMembership(input: {
+  chatId: number;
+  chatTitle?: string | null;
+  chatType: 'group' | 'supergroup' | 'channel';
+}): Promise<void> {
+  const now = new Date().toISOString();
+  await db()
+    .from('telegram_groups')
+    .upsert(
+      {
+        chat_id: input.chatId,
+        chat_title: input.chatTitle ?? null,
+        chat_type: input.chatType,
+        is_active: true,
+        joined_at: now,
+        left_at: null,
+        last_seen_at: now,
+      },
+      { onConflict: 'chat_id' },
+    );
+}
+
+export async function markGroupLeft(chatId: number): Promise<void> {
+  await db()
+    .from('telegram_groups')
+    .update({ is_active: false, left_at: new Date().toISOString() })
+    .eq('chat_id', chatId);
+}
+
+export async function listActiveGroupIds(): Promise<number[]> {
+  const { data } = await db()
+    .from('telegram_groups')
+    .select('chat_id')
+    .eq('is_active', true);
+  return ((data ?? []) as { chat_id: number }[]).map((r) => r.chat_id);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DM signal opt-out
 // ─────────────────────────────────────────────────────────────────────────────
 
