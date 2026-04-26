@@ -12,6 +12,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN not set' });
   }
 
+  // Gate this endpoint behind WEBHOOK_SECRET so a stranger can't repoint
+  // the webhook (DoS) or flush queued updates (?drop=1) on us. Vercel cron
+  // jobs identify themselves with x-vercel-cron and are allowed through.
+  const expected = process.env.WEBHOOK_SECRET;
+  const provided = typeof req.query.secret === 'string' ? req.query.secret : '';
+  const isVercelCron = !!req.headers['x-vercel-cron'];
+  if (expected && !isVercelCron && provided !== expected) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  if (!expected) {
+    console.warn('[set-webhook] WEBHOOK_SECRET not configured — endpoint is public.');
+  }
+
   // Derive webhook URL from Vercel deployment
   const host = req.headers.host;
   const webhookUrl = `https://${host}/api/webhook`;
@@ -26,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: webhookUrl,
-        allowed_updates: ['message'],
+        allowed_updates: ['message', 'callback_query'],
         max_connections: 40,
         drop_pending_updates: dropPendingUpdates,
       }),
@@ -40,11 +53,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         commands: [
-          { command: 'start',  description: 'Start main menu' },
-          { command: 'invoke', description: 'Hunt hidden microcaps' },
-          { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
-          { command: 'myths',  description: 'Narrative tracker (rising stories)' },
-          { command: 'pearls', description: 'Daily financial wisdom' },
+          { command: 'start',   description: 'Start main menu' },
+          { command: 'invoke',  description: 'Hunt hidden microcaps' },
+          { command: 'oracle',  description: 'Reveal a token by its contract address' },
+          { command: 'callnow', description: 'Submit a token call to the Pantheon' },
+          { command: 'gods',    description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
+          { command: 'pulse',   description: 'Market daily report (macro, sentiment, flows)' },
+          { command: 'myths',   description: 'Narrative tracker (rising stories)' },
+          { command: 'pearls',  description: 'Daily financial wisdom' },
+          { command: 'forge',   description: 'Launch a token via Bankr (admin)' },
+          { command: 'optout',  description: 'Stop receiving Pantheon DMs' },
+          { command: 'optin',   description: 'Re-enable Pantheon DMs' },
+          { command: 'cancel',  description: 'Cancel an in-progress wizard' },
         ],
       }),
     }

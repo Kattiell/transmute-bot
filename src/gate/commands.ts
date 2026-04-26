@@ -185,6 +185,8 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
       `Session: <b>${GATE_CONFIG.sessionDurationDays} days</b>\n\n` +
       `🔮 /invoke — hunt hidden microcaps (max 3/day, resets at 00:00 UTC)\n` +
+      `𓂀 /oracle CA — reveal any Base token (max 5/day)\n` +
+      `🏛 /callnow — submit a call · 🏆 /gods 7d — leaderboard\n` +
       `📊 /pulse · 🌀 /myths · 💎 /pearls also available.\n\n` +
       `<i>Generate a new code anytime in the Transmute App — it will replace this one.</i>`,
     { parse_mode: 'HTML' },
@@ -264,6 +266,9 @@ export function registerGateCommands(bot: Telegraf): void {
     await ctx.reply(
       `${header}\n\n` +
         `🔮 /invoke — Hunt hidden microcaps (Base)\n` +
+        `𓂀 /oracle CA — Reveal any Base token by contract address\n` +
+        `🏛 /callnow — Submit a call to the Pantheon\n` +
+        `🏆 /gods 7d — Pantheon leaderboard\n` +
         `📊 /pulse — Market daily report\n` +
         `🌀 /myths — Narrative tracker\n` +
         `💎 /pearls — Daily financial wisdom\n\n` +
@@ -300,6 +305,9 @@ export async function handleStart(ctx: Context): Promise<void> {
             `Expires in: ${humanizeTtl(link.verified_until)}\n\n` +
             `<b>Channel the Oracle:</b>\n` +
             `🔮 /invoke — Hunt hidden microcaps\n` +
+            `𓂀 /oracle CA — Reveal any Base token\n` +
+            `🏛 /callnow — Submit a call to the Pantheon\n` +
+            `🏆 /gods 7d — Pantheon leaderboard\n` +
             `📊 /pulse — Market daily report\n` +
             `🌀 /myths — Narrative tracker\n` +
             `💎 /pearls — Daily wisdom\n\n` +
@@ -341,9 +349,22 @@ export function buildHelpMessage(): string {
     `🗑 /unlink — Remove wallet\n\n` +
     `<b>Premium (requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE):</b>\n` +
     `🔮 /invoke — Hunt hidden microcaps (max 3/day, resets 00:00 UTC)\n` +
+    `𓂀 /oracle CA — Reveal any Base token (max 5/day)\n` +
+    `🏛 /callnow — Submit a call to the Pantheon (max 3/day, 6h cooldown)\n` +
+    `🏆 /gods 7d — Pantheon leaderboard (also 30d / all)\n` +
     `📊 /pulse — Market daily report\n` +
     `🌀 /myths — Narrative tracker\n` +
     `💎 /pearls — Daily wisdom\n\n` +
+    `<b>Group commands (admins):</b>\n` +
+    `📡 /subscribe — Receive approved Pantheon calls in this group\n` +
+    `🔕 /unsubscribe — Stop receiving calls\n` +
+    `ℹ️ /status — Show subscription status\n\n` +
+    `<b>Personal preferences (DM):</b>\n` +
+    `🔕 /optout — Stop receiving Pantheon DMs\n` +
+    `🔔 /optin — Re-enable Pantheon DMs\n` +
+    `🛑 /cancel — Cancel any active wizard\n\n` +
+    `<b>Operator (admin only):</b>\n` +
+    `🔥 /forge — Launch a token via Bankr (DM only)\n\n` +
     `<i>Verification lasts ${GATE_CONFIG.sessionDurationDays} days.</i>`
   );
 }

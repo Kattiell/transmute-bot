@@ -13,9 +13,25 @@ export const GATE_CONFIG = {
   cacheTtlSeconds: 60,
 };
 
-export const PREMIUM_COMMANDS = ['invoke', 'pulse', 'myths', 'pearls'] as const;
+export const PREMIUM_COMMANDS = ['invoke', 'pulse', 'myths', 'pearls', 'oracle', 'callnow'] as const;
 export type PremiumCommand = (typeof PREMIUM_COMMANDS)[number];
 
 export const DAILY_LIMITS: Partial<Record<PremiumCommand, number>> = {
   invoke: parseInt(process.env.GATE_INVOKE_DAILY_LIMIT || '3', 10),
+  oracle: parseInt(process.env.GATE_ORACLE_DAILY_LIMIT || '5', 10),
+  callnow: parseInt(process.env.GATE_CALLNOW_DAILY_LIMIT || '3', 10),
 };
+
+/** Telegram user IDs allowed to approve/reject calls. Comma-separated env var. */
+export function getAdminTelegramIds(): number[] {
+  const raw = process.env.ADMIN_TELEGRAM_IDS || '';
+  return raw
+    .split(',')
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+export function isAdmin(telegramId: number | undefined | null): boolean {
+  if (!telegramId) return false;
+  return getAdminTelegramIds().includes(telegramId);
+}

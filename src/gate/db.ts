@@ -246,6 +246,9 @@ export async function cleanupExpired(): Promise<{
   challenges: number;
   dailyUsage: number;
   processedUpdates: number;
+  pendingOracle: number;
+  pendingCall: number;
+  pendingForge: number;
 }> {
   const client = db();
   const now = new Date().toISOString();
@@ -253,7 +256,7 @@ export async function cleanupExpired(): Promise<{
   const oneHourAgo = new Date(Date.now() - 3600_000).toISOString();
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
 
-  const [links, nonces, logs, cache, codes, challenges, dailyUsage, processedUpdates] = await Promise.all([
+  const [links, nonces, logs, cache, codes, challenges, dailyUsage, processedUpdates, pendingOracle, pendingCall, pendingForge] = await Promise.all([
     client.from('telegram_wallet_links').delete().lt('verified_until', now).select('telegram_id'),
     client.from('telegram_auth_nonces').delete().lt('expires_at', now).select('nonce'),
     client.from('telegram_access_log').delete().lt('created_at', thirtyDaysAgo).select('id'),
@@ -262,6 +265,9 @@ export async function cleanupExpired(): Promise<{
     client.from('telegram_code_challenges').delete().lt('expires_at', now).select('nonce'),
     client.from('telegram_premium_daily_usage').delete().lt('usage_date', sevenDaysAgo).select('telegram_id'),
     client.from('telegram_processed_updates').delete().lt('processed_at', oneHourAgo).select('update_id'),
+    client.from('telegram_pending_oracle').delete().lt('expires_at', now).select('telegram_id'),
+    client.from('telegram_pending_call').delete().lt('expires_at', now).select('telegram_id'),
+    client.from('telegram_pending_forge').delete().lt('expires_at', now).select('telegram_id'),
   ]);
 
   return {
@@ -273,6 +279,9 @@ export async function cleanupExpired(): Promise<{
     challenges: challenges.data?.length ?? 0,
     dailyUsage: dailyUsage.data?.length ?? 0,
     processedUpdates: processedUpdates.data?.length ?? 0,
+    pendingOracle: pendingOracle.data?.length ?? 0,
+    pendingCall: pendingCall.data?.length ?? 0,
+    pendingForge: pendingForge.data?.length ?? 0,
   };
 }
 
@@ -451,6 +460,37 @@ export async function checkAndIncrementDailyUsage(
     remaining: maxPerDay - nextCount,
     resetAt,
   };
+}
+
+/**
+ * Pending /oracle state. Set when a user runs `/oracle` without inlining a CA;
+ * cleared when they reply with a CA, run another command, or the TTL expires.
+ */
+export async function setPendingOracle(
+  telegramId: number,
+  ttlSeconds = 300,
+): Promise<void> {
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+  await db()
+    .from('telegram_pending_oracle')
+    .upsert(
+      { telegram_id: telegramId, expires_at: expiresAt, created_at: new Date().toISOString() },
+      { onConflict: 'telegram_id' },
+    );
+}
+
+export async function getPendingOracle(telegramId: number): Promise<boolean> {
+  const { data } = await db()
+    .from('telegram_pending_oracle')
+    .select('expires_at')
+    .eq('telegram_id', telegramId)
+    .maybeSingle();
+  if (!data) return false;
+  return new Date(data.expires_at).getTime() > Date.now();
+}
+
+export async function clearPendingOracle(telegramId: number): Promise<void> {
+  await db().from('telegram_pending_oracle').delete().eq('telegram_id', telegramId);
 }
 
 export async function peekDailyUsage(

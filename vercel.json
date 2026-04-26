@@ -11,12 +11,19 @@
     },
     "api/cron-cleanup.ts": {
       "maxDuration": 60
+    },
+    "api/cron-update-ath.ts": {
+      "maxDuration": 120
     }
   },
   "crons": [
     {
       "path": "/api/cron-cleanup",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron-update-ath",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
