@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "verify:arena": "tsx scripts/verify-arena-send.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.3",

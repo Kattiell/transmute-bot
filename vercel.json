@@ -14,8 +14,14 @@
     },
     "api/cron-update-ath.ts": {
       "maxDuration": 120
+    },
+    "api/internal/arena/send.ts": {
+      "maxDuration": 10
     }
   },
+  "rewrites": [
+    { "source": "/internal/arena/send", "destination": "/api/internal/arena/send" }
+  ],
   "crons": [
     {
       "path": "/api/cron-cleanup",
