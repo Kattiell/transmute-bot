@@ -184,7 +184,7 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       `Wallet: <code>${maskAddress(row.wallet_address)}</code>\n` +
       `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
       `Session: <b>${GATE_CONFIG.sessionDurationDays} days</b>\n\n` +
-      `🔮 /invoke — hunt hidden microcaps (max 3/day, resets at 00:00 UTC)\n` +
+      `🔮 /invoke — hunt hidden microcaps (max 7/day, resets at 00:00 UTC)\n` +
       `𓂀 /oracle CA — reveal any Base token (max 5/day)\n` +
       `🏛 /callnow — submit a call · 🏆 /gods 7d — leaderboard\n` +
       `📊 /pulse · 🌀 /myths · 💎 /pearls also available.\n\n` +
@@ -328,7 +328,7 @@ export async function handleStart(ctx: Context): Promise<void> {
 
   const body =
     `<b>Access is token-gated.</b> Hold at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> in a Base wallet to unlock:\n\n` +
-    `🔮 /invoke (3/day) · 📊 /pulse · 🌀 /myths · 💎 /pearls\n\n` +
+    `🔮 /invoke (7/day) · 📊 /pulse · 🌀 /myths · 💎 /pearls\n\n` +
     `Two ways to verify:\n` +
     `• 🎟 Generate a weekly code in the Transmute App, then send <code>/verify CODE</code>\n` +
     `• 🔗 Tap the button below to sign via browser (no gas, just an ownership signature).\n\n` +
@@ -348,7 +348,7 @@ export function buildHelpMessage(): string {
     `✨ /premium — List premium commands\n` +
     `🗑 /unlink — Remove wallet\n\n` +
     `<b>Premium (requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE):</b>\n` +
-    `🔮 /invoke — Hunt hidden microcaps (max 3/day, resets 00:00 UTC)\n` +
+    `🔮 /invoke — Hunt hidden microcaps (max 7/day, resets 00:00 UTC)\n` +
     `𓂀 /oracle CA — Reveal any Base token (max 5/day)\n` +
     `🏛 /callnow — Submit a call to the Pantheon (max 3/day, 6h cooldown)\n` +
     `🏆 /gods 7d — Pantheon leaderboard (also 30d / all)\n` +

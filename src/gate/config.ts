@@ -17,7 +17,7 @@ export const PREMIUM_COMMANDS = ['invoke', 'pulse', 'myths', 'pearls', 'oracle',
 export type PremiumCommand = (typeof PREMIUM_COMMANDS)[number];
 
 export const DAILY_LIMITS: Partial<Record<PremiumCommand, number>> = {
-  invoke: parseInt(process.env.GATE_INVOKE_DAILY_LIMIT || '3', 10),
+  invoke: parseInt(process.env.GATE_INVOKE_DAILY_LIMIT || '7', 10),
   oracle: parseInt(process.env.GATE_ORACLE_DAILY_LIMIT || '5', 10),
   callnow: parseInt(process.env.GATE_CALLNOW_DAILY_LIMIT || '3', 10),
 };
