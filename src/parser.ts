@@ -72,9 +72,13 @@ function extractSummary(raw: string): string {
 
 function extractSignals(raw: string): string {
   const stripped = stripBold(raw);
-  const match = stripped.match(/on.chain\s*\+?\s*(?:social|x)\s*signals?\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n📈|\njudgment|\nrisks?\s*[:=]|\n𓂀|\nteaching|\nwallet\s*intelligence)/i);
+  // Accepts "On-chain + X Signals", "On-chain + Social Signals", and the
+  // current prompt's "On-chain + Social Graph Signals". Keep all three
+  // variants tolerated so older Grok outputs (cached / replayed) still parse.
+  const labelRe = /on.chain\s*\+?\s*(?:social(?:\s*graph)?|x)\s*signals?\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n📈|\njudgment|\nrisks?\s*[:=]|\n𓂀|\nteaching|\nwallet\s*intelligence)/i;
+  const match = stripped.match(labelRe);
   if (match) {
-    const rawMatch = raw.match(/on.chain\s*\+?\s*(?:social|x)\s*signals?\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n📈|\njudgment|\nrisks?\s*[:=]|\n𓂀|\nteaching|\nwallet\s*intelligence)/i);
+    const rawMatch = raw.match(labelRe);
     const signals = (rawMatch || match)[1].trim().replace(/\n/g, ' ');
     return signals.length > 300 ? signals.slice(0, 297) + '...' : signals;
   }
