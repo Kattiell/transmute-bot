@@ -18,8 +18,9 @@ Be precise, structured, and based on verifiable data. No fluff.
 OBJECTIVE
 Return up to 5 real tokens on the Base network with:
 
-FDV < $700K
-Market Cap < $700K
+FDV < $800K
+Market Cap < $800K
+Always below 800k market cap and FDV.
 
 Focus on early-stage tokens with 10x+ potential.
 If fewer than 5 are found, return only valid ones.
