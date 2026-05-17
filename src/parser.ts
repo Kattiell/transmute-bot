@@ -25,7 +25,8 @@ function extractTicker(raw: string): string {
 function extractName(raw: string): string {
   const text = stripBold(raw);
 
-  const nameOnly = text.match(/^[\s]*name\s*[:=]\s*([^\n($]+)/im);
+  // Accepts both "Name:" (legacy) and "Token Name:" (Primordial Alpha Hunter v2)
+  const nameOnly = text.match(/^[\s]*(?:token\s+)?name\s*[:=]\s*([^\n($]+)/im);
   if (nameOnly) {
     const name = nameOnly[1].replace(/\$[A-Z0-9]+/gi, '').trim();
     if (name.length > 0 && name.length < 80) return name;
@@ -72,10 +73,13 @@ function extractSummary(raw: string): string {
 
 function extractSignals(raw: string): string {
   const stripped = stripBold(raw);
-  // Accepts "On-chain + X Signals", "On-chain + Social Signals", and the
-  // current prompt's "On-chain + Social Graph Signals". Keep all three
-  // variants tolerated so older Grok outputs (cached / replayed) still parse.
-  const labelRe = /on.chain\s*\+?\s*(?:social(?:\s*graph)?|x)\s*signals?\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n📈|\njudgment|\nrisks?\s*[:=]|\n𓂀|\nteaching|\nwallet\s*intelligence)/i;
+  // Accepts:
+  //   "On-chain Signals:"                     (Primordial Alpha Hunter v2)
+  //   "On-chain + Social Graph Signals:"      (Primordial Alpha Hunter v1)
+  //   "On-chain + Social Signals:" / "X Signals:" (legacy prompts)
+  // The "+ social/x" segment is optional; cached Grok outputs from older
+  // prompts still parse cleanly.
+  const labelRe = /on.chain\s*(?:\+?\s*(?:social(?:\s*graph)?|x)\s*)?signals?\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n📈|\njudgment|\nrisks?\s*[:=]|\n𓂀|\nteaching|\nwallet\s*intelligence|\nsocial\s*graph\s*signals?)/i;
   const match = stripped.match(labelRe);
   if (match) {
     const rawMatch = raw.match(labelRe);

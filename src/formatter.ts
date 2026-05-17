@@ -151,7 +151,7 @@ export function formatWhispersReport(projects: ParsedProject[]): string[] {
   let header = '𓂀 <b>TRANSMUTE ORACLE</b>\n';
   header += '<b>Hidden Microcaps — Base Chain</b>\n';
   header += `<i>${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</i>\n\n`;
-  header += `Found <b>${projects.length}</b> signal${projects.length !== 1 ? 's' : ''} below $800K FDV`;
+  header += `Found <b>${projects.length}</b> signal${projects.length !== 1 ? 's' : ''} below $1M FDV`;
 
   const footer =
     '━━━━━━━━━━━━━━━\n' +
