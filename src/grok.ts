@@ -1,5 +1,4 @@
 import { ORACLE_PROMPT } from './prompts';
-import { withSecurity } from './security-prompt';
 
 const GROK_API_URL = 'https://api.x.ai/v1/responses';
 
@@ -39,17 +38,17 @@ function extractTextFromGrokResponse(data: Record<string, unknown>): string {
 }
 
 /**
- * Single chokepoint for every Grok call from this bot. Every caller
- * (invokeOracle, invokeOracleWithPrompt — and through them: Pulse, Myths,
- * Pearls, Horus CA analysis) routes here, so wrapping the prompt with the
- * security constitution exactly once at this layer guarantees the rules
- * apply to every LLM reasoning path without per-prompt sprinkling.
+ * Single chokepoint for every Grok call from this bot. The bot's callers
+ * (invokeOracle, invokeOracleWithPrompt — Oracle /invoke, Pulse, Myths,
+ * Pearls, Horus CA analysis) are all SOLO discovery / single-shot analysis
+ * paths. None of them participate in council voting, so the security
+ * constitution that wrapped this layer was producing REJECT/ABSTAIN
+ * silence on microcap discovery and has been removed — the prompts are
+ * sent raw, exactly as the caller authored them.
  */
 async function callGrok(prompt: string): Promise<string> {
   const apiKey = process.env.GROK_API_KEY;
   if (!apiKey) throw new Error('GROK_API_KEY not configured');
-
-  const wrappedPrompt = withSecurity(prompt);
 
   // Hard-cap the Grok call so a hung API request can't silently eat the whole
   // 300s Lambda budget. 240s leaves 60s for parsing + Telegram sends.
@@ -69,7 +68,7 @@ async function callGrok(prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model: 'grok-4.20-reasoning',
-        input: wrappedPrompt,
+        input: prompt,
         tools: [{ type: 'web_search' }],
       }),
       signal: controller.signal,
