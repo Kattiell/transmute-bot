@@ -8,8 +8,14 @@
  * bot is the sole owner of TELEGRAM_BOT_TOKEN — nous-app never holds it.
  *
  * Contract (must match src/lib/arena/telegram.ts on the nous-app side):
- *   request body  { chatId: number, text: string, signalId: string, hmac: string }
+ *   request body  { chatId: number, text: string, signalId: string, hmac: string,
+ *                   parseMode?: 'HTML'|'Markdown'|'MarkdownV2',
+ *                   messageThreadId?: number }
  *   hmac          = hex(HMAC_SHA256(ARENA_BOT_INTERNAL_SECRET, JSON.stringify({chatId,text,signalId})))
+ *                   parseMode + messageThreadId are INTENTIONALLY outside the
+ *                   signed payload so the two repos can roll forward
+ *                   independently (a bot deploy that ignores them stays
+ *                   signature-compatible with older nous-app deploys).
  *   200           delivered
  *   400           malformed body / oversize text
  *   401           bad/missing signature
@@ -23,9 +29,13 @@
  *   - Strict input validation BEFORE the HMAC check, so we don't burn cycles
  *     on garbage and don't get tricked by exotic types.
  *   - chatId / text / signalId are NEVER logged in clear.
- *   - parse_mode is intentionally omitted — the Call Now is plain text and
- *     leaving HTML/Markdown off prevents injection if `text` ever carries
- *     untrusted special chars.
+ *   - parseMode/messageThreadId are read from req.body AFTER the HMAC check
+ *     passes, then whitelisted (parseMode ∈ HTML/Markdown/MarkdownV2,
+ *     messageThreadId is a positive integer) before reaching Telegraf — an
+ *     attacker can't forge a delivery to begin with, but defensive validation
+ *     also keeps a buggy/compromised nous-app from injecting arbitrary fields.
+ *   - HTML/Markdown rendering of `text` is safe because the caller HTML-escapes
+ *     every interpolation site (see escapeHtml in nous-app format-callnow.ts).
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -125,6 +135,34 @@ interface TelegramErrorShape {
   response?: { parameters?: { retry_after?: number } };
 }
 
+type ParseMode = 'HTML' | 'Markdown' | 'MarkdownV2';
+const ALLOWED_PARSE_MODES: readonly ParseMode[] = ['HTML', 'Markdown', 'MarkdownV2'];
+
+/**
+ * Extracts the optional `parseMode` field from the request body. Unknown
+ * values (typos, unsupported modes) silently degrade to plain text — same
+ * behavior as if the field had been omitted entirely.
+ */
+function extractParseMode(body: unknown): ParseMode | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const v = (body as Record<string, unknown>).parseMode;
+  return typeof v === 'string' && (ALLOWED_PARSE_MODES as readonly string[]).includes(v)
+    ? (v as ParseMode)
+    : undefined;
+}
+
+/**
+ * Extracts the optional `messageThreadId` field for forum-topic supergroups.
+ * Telegram's `message_thread_id` is a positive integer; we reject zero,
+ * negatives, and non-integers (Telegram returns 400 for these, so guarding
+ * here keeps the error surface clean).
+ */
+function extractMessageThreadId(body: unknown): number | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const v = (body as Record<string, unknown>).messageThreadId;
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -153,12 +191,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const bot = getBot();
   if (!bot) return res.status(503).json({ error: 'service_unavailable' });
 
+  const parseMode = extractParseMode(req.body);
+  const messageThreadId = extractMessageThreadId(req.body);
+
   try {
     await bot.telegram.sendMessage(body.chatId, body.text, {
-      // Plain text on purpose — Call Now is plain text and we DO NOT want to
-      // interpret HTML/Markdown in case `text` ever carries `<`/`&`.
       // @ts-expect-error - Telegraf types may lag the API
       disable_web_page_preview: true,
+      // parseMode is whitelisted above; passing only validated values keeps
+      // Telegram's renderer from receiving anything we didn't intend.
+      ...(parseMode ? { parse_mode: parseMode } : {}),
+      // Forum-topic targeting for supergroups with topics enabled. nous-app
+      // splits ARENA_GROUP_CHAT_ID="<chatId>_<threadId>" and surfaces the
+      // thread id here. Older nous-app deploys omit it → general topic.
+      ...(messageThreadId !== undefined ? { message_thread_id: messageThreadId } : {}),
     });
     return res.status(200).json({ ok: true });
   } catch (err) {
