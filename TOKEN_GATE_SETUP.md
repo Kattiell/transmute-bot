@@ -31,7 +31,7 @@ In Supabase SQL Editor, run both in order:
 | `SUPABASE_URL` | yes | — | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | — | Service role key (not anon) |
 | `GATE_TOKEN_ADDRESS` | no | `0x557E...821A` | TRANSMUTE ERC-20 on Base |
-| `GATE_MIN_BALANCE` | no | `25000000` | Whole tokens (integer) |
+| `GATE_MIN_BALANCE` | no | `100000000` | Whole tokens (integer) |
 | `GATE_INVOKE_DAILY_LIMIT` | no | `3` | Max `/invoke` uses per UTC day |
 | `GATE_CHAIN_ID` | no | `8453` | Base mainnet |
 | `BASE_RPC_1` | no | `https://mainnet.base.org` | Primary RPC |
