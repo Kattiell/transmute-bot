@@ -149,7 +149,15 @@ function bestSplit(raw: string): string[] {
 function parseSection(text: string, num: number): ParsedProject | null {
   const cleaned = text.replace(/^\d+\s*\*{0,2}\s*☿?\s*/, '').trim();
   if (!cleaned || cleaned.length < 30) return null;
-  if (/no\s+verified|could\s+not\s+find|unable\s+to\s+verify/i.test(cleaned)) return null;
+
+  // Refusal detection: only flag when the refusal LEADS the section. The
+  // Hidden Microcaps prompt is deliberately tolerant ("include with risk
+  // flagged"), so the model legitimately writes phrases like "could not find
+  // a linked X handle" inside Risks/Creator Origin of an otherwise valid
+  // signal. Scanning the whole body for those substrings dropped valid
+  // signals — mirror nous-app/oracle-parser and only check the head.
+  const head = cleaned.slice(0, 220);
+  if (/^[\s\W]*(no\s+verified|none\s+met|could\s+not\s+find\s+(?:qualifying|any\s+token)|unable\s+to\s+verify\s+any|insufficient\s+data)/i.test(head)) return null;
 
   const ticker = extractTicker(cleaned);
   if (ticker === 'UNKNOWN') return null;
