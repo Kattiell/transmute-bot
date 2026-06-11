@@ -35,3 +35,27 @@ export function isAdmin(telegramId: number | undefined | null): boolean {
   if (!telegramId) return false;
   return getAdminTelegramIds().includes(telegramId);
 }
+
+/**
+ * God-mode wallet allowlist. Wallets here bypass the $TRANSMUTE balance gate
+ * (premium commands + code redeem) AND every premium daily limit (/invoke,
+ * /oracle, ...). Mirrored in `nous-app/src/lib/gate-exempt.ts`, which applies the
+ * same list to the site + arena gates. Keep both in sync.
+ *
+ * Source of truth: GATE_EXEMPT_WALLETS env (comma-separated, any case). Defaults
+ * are public on-chain addresses, so hardcoding them is safe. Privilege grant, not
+ * a security boundary — keep the list short.
+ */
+const EXEMPT_WALLETS: ReadonlySet<string> = new Set(
+  (process.env.GATE_EXEMPT_WALLETS ||
+    '0xcd7932b2ed451a319d1a3e8b836c343c83bc063d,0xf9a5391c9e36b39171fdbe8210269828acea6927')
+    .split(',')
+    .map((w) => w.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+/** True when `wallet` is on the god-mode allowlist (case-insensitive). */
+export function isExemptWallet(wallet?: string | null): boolean {
+  if (!wallet) return false;
+  return EXEMPT_WALLETS.has(wallet.toLowerCase());
+}

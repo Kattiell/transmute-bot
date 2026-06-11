@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
-import { GATE_CONFIG } from './config';
+import { GATE_CONFIG, isExemptWallet } from './config';
 
 let _client: SupabaseClient | null = null;
 function db(): SupabaseClient {
@@ -387,6 +387,8 @@ export async function claimTelegramUpdate(updateId: number): Promise<boolean> {
 
 export async function isUnlimitedWallet(walletAddress?: string | null): Promise<boolean> {
   if (!walletAddress) return false;
+  // God-mode allowlist short-circuits the DB lookup — no daily caps.
+  if (isExemptWallet(walletAddress)) return true;
   const { data } = await db()
     .from('oracle_unlimited_wallets')
     .select('wallet_address')

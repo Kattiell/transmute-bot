@@ -1,5 +1,5 @@
 import type { Context, MiddlewareFn } from 'telegraf';
-import { GATE_CONFIG, PREMIUM_COMMANDS } from './config';
+import { GATE_CONFIG, PREMIUM_COMMANDS, isExemptWallet } from './config';
 import { getWalletLink, isLinkExpired, logAccess, upsertTelegramUser, checkRateLimit } from './db';
 import { getTokenBalance, formatTokenAmount } from './blockchain';
 
@@ -76,27 +76,30 @@ export const premiumGateMiddleware: MiddlewareFn<Context> = async (ctx, next) =>
     return;
   }
 
-  try {
-    const balance = await getTokenBalance(link.wallet_address);
-    if (!balance.meetsMinimum) {
-      await logAccess({
-        telegramId: from.id,
-        action: `cmd:${cmd}`,
-        success: false,
-        reason: 'balance_dropped',
-        walletAddress: link.wallet_address,
-        metadata: { balance: balance.raw.toString() },
-      });
-      await ctx.reply(
-        `❌ <b>Insufficient token balance.</b>\n\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\nRequired: <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')}</b> $TRANSMUTE\n\nAcquire more tokens or /relink a different wallet.`,
-        { parse_mode: 'HTML' }
-      );
+  // God-mode wallets skip the on-chain balance gate entirely.
+  if (!isExemptWallet(link.wallet_address)) {
+    try {
+      const balance = await getTokenBalance(link.wallet_address);
+      if (!balance.meetsMinimum) {
+        await logAccess({
+          telegramId: from.id,
+          action: `cmd:${cmd}`,
+          success: false,
+          reason: 'balance_dropped',
+          walletAddress: link.wallet_address,
+          metadata: { balance: balance.raw.toString() },
+        });
+        await ctx.reply(
+          `❌ <b>Insufficient token balance.</b>\n\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\nRequired: <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')}</b> $TRANSMUTE\n\nAcquire more tokens or /relink a different wallet.`,
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+    } catch (err) {
+      console.error('[gate] balance check failed', err);
+      await ctx.reply('⚠️ Unable to verify balance right now. Please try again in a moment.');
       return;
     }
-  } catch (err) {
-    console.error('[gate] balance check failed', err);
-    await ctx.reply('⚠️ Unable to verify balance right now. Please try again in a moment.');
-    return;
   }
 
   await logAccess({

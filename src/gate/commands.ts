@@ -1,5 +1,5 @@
 import type { Telegraf, Context } from 'telegraf';
-import { GATE_CONFIG } from './config';
+import { GATE_CONFIG, isExemptWallet } from './config';
 import { buildLinkUrl } from './auth';
 import {
   createNonce,
@@ -131,7 +131,7 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
     return;
   }
 
-  if (!balance.meetsMinimum) {
+  if (!balance.meetsMinimum && !isExemptWallet(row.wallet_address)) {
     await logAccess({
       telegramId: from.id,
       action: 'code_redeem',
@@ -355,6 +355,9 @@ export function buildHelpMessage(): string {
     `📊 /pulse — Market daily report\n` +
     `🌀 /myths — Narrative tracker\n` +
     `💎 /pearls — Daily wisdom\n\n` +
+    `<b>Calls & flex (free):</b>\n` +
+    `📟 Post a Base CA in a group — the Oracle replies with a live stats card\n` +
+    `🎴 /flex [CA] — Mint a flexcard image of a tracked call\n\n` +
     `<b>Group commands (admins):</b>\n` +
     `📡 /subscribe — Receive approved Pantheon calls in this group\n` +
     `🔕 /unsubscribe — Stop receiving calls\n` +

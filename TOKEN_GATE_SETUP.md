@@ -32,6 +32,7 @@ In Supabase SQL Editor, run both in order:
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | — | Service role key (not anon) |
 | `GATE_TOKEN_ADDRESS` | no | `0x557E...821A` | TRANSMUTE ERC-20 on Base |
 | `GATE_MIN_BALANCE` | no | `100000000` | Whole tokens (integer) |
+| `GATE_EXEMPT_WALLETS` | no | 2 baked-in addrs | Comma-separated allowlist; bypasses the balance gate AND all premium daily limits. Mirror in nous-app. |
 | `GATE_INVOKE_DAILY_LIMIT` | no | `3` | Max `/invoke` uses per UTC day |
 | `GATE_CHAIN_ID` | no | `8453` | Base mainnet |
 | `BASE_RPC_1` | no | `https://mainnet.base.org` | Primary RPC |
