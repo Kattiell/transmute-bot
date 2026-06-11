@@ -366,8 +366,6 @@ export function buildHelpMessage(): string {
     `🔕 /optout — Stop receiving Pantheon DMs\n` +
     `🔔 /optin — Re-enable Pantheon DMs\n` +
     `🛑 /cancel — Cancel any active wizard\n\n` +
-    `<b>Operator (admin only):</b>\n` +
-    `🔥 /forge — Launch a token via Bankr (DM only)\n\n` +
     `<i>Verification lasts ${GATE_CONFIG.sessionDurationDays} days.</i>`
   );
 }

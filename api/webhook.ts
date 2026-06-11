@@ -55,21 +55,6 @@ import {
   formatPantheonLeaderboard,
 } from '../src/oracle/format';
 import {
-  clearPendingForge,
-  getPendingForge,
-  markForgeFailure,
-  markForgeSuccess,
-  recordForgeAttempt,
-  setPendingForgeStep,
-} from '../src/oracle/forge';
-import {
-  BankrError,
-  deployBankrToken,
-  validateImageUrl,
-  validateTokenName,
-  validateTokenSymbol,
-} from '../src/bankr';
-import {
   getEarliestTokenCall,
   getLatestTokenCallForChat,
   getTokenCall,
@@ -982,63 +967,13 @@ bot.on('callback_query', async (ctx, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// /forge — Bankr token launcher (admin-only MVP)
+// /cancel — abort any active wizard
 // ─────────────────────────────────────────────────────────────────────────────
-
-function buildForgeSummary(opts: { name: string; ticker: string; imageUrl: string | null }): string {
-  return [
-    '𓂀 <b>FORGE — Final Confirmation</b>',
-    '',
-    `Name: <b>${opts.name}</b>`,
-    `Ticker: <b>$${opts.ticker}</b>`,
-    `Image: <i>${opts.imageUrl ?? 'none'}</i>`,
-    '',
-    `Network: <b>Base</b>`,
-    `Supply: <b>100,000,000,000</b> (fixed)`,
-    `Swap fee: <b>1.2%</b> via Uniswap V4`,
-    `Creator share: <b>57%</b> of fees`,
-    '',
-    '⚠️ <b>This deploy is real and irreversible.</b>',
-    '<i>The token launches from the wallet bound to BANKR_API_KEY.</i>',
-  ].join('\n');
-}
-
-bot.command('forge', async (ctx) => {
-  const from = ctx.from;
-  if (!from || !ctx.chat) return;
-  if (ctx.chat.type !== 'private') {
-    await ctx.reply('𓂀 <b>/forge</b> runs in DM only.', { parse_mode: 'HTML' });
-    return;
-  }
-  if (!isAdmin(from.id)) {
-    await ctx.reply('🚫 <b>/forge</b> is currently restricted to operator accounts.', {
-      parse_mode: 'HTML',
-    });
-    return;
-  }
-  if (!process.env.BANKR_API_KEY) {
-    await ctx.reply('⚠️ <b>BANKR_API_KEY not configured.</b> Set it in env vars first.', {
-      parse_mode: 'HTML',
-    });
-    return;
-  }
-
-  await setPendingForgeStep({ telegramId: from.id, step: 'awaiting_name', ttlSeconds: 900 });
-  await ctx.reply(
-    '𓂀 <b>The Forge ignites.</b>\n\nWhat is the <b>token name</b>? (2-40 chars)\n\n<i>Step 1 of 3 — 15 minutes to respond. Send /cancel to abort.</i>',
-    { parse_mode: 'HTML' },
-  );
-});
 
 bot.command('cancel', async (ctx) => {
   const from = ctx.from;
   if (!from || ctx.chat?.type !== 'private') return;
   let cancelled = false;
-  const pending = await getPendingForge(from.id).catch(() => null);
-  if (pending) {
-    await clearPendingForge(from.id).catch(() => undefined);
-    cancelled = true;
-  }
   const callPending = await getPendingCall(from.id).catch(() => null);
   if (callPending) {
     await clearPendingCall(from.id).catch(() => undefined);
@@ -1050,188 +985,6 @@ bot.command('cancel', async (ctx) => {
     cancelled = true;
   }
   await ctx.reply(cancelled ? '🛑 Cancelled.' : 'Nothing to cancel.');
-});
-
-async function handleForgeName(ctx: Context, raw: string): Promise<void> {
-  const from = ctx.from;
-  if (!from) return;
-  const v = validateTokenName(raw);
-  if (!v.ok) {
-    await ctx.reply(`❌ ${v.reason} Try again or /cancel.`);
-    return;
-  }
-  await setPendingForgeStep({
-    telegramId: from.id,
-    step: 'awaiting_ticker',
-    tokenName: raw.trim(),
-    ttlSeconds: 900,
-  });
-  await ctx.reply(
-    `✅ Name: <b>${raw.trim()}</b>\n\nWhat is the <b>ticker</b>? (2-10 letters/digits, e.g. <code>HORUS</code>)\n\n<i>Step 2 of 3.</i>`,
-    { parse_mode: 'HTML' },
-  );
-}
-
-async function handleForgeTicker(
-  ctx: Context,
-  pending: { token_name: string | null },
-  raw: string,
-): Promise<void> {
-  const from = ctx.from;
-  if (!from || !pending.token_name) return;
-  const v = validateTokenSymbol(raw);
-  if (!v.ok || !v.normalized) {
-    await ctx.reply(`❌ ${v.reason} Try again or /cancel.`);
-    return;
-  }
-  await setPendingForgeStep({
-    telegramId: from.id,
-    step: 'awaiting_image',
-    tokenName: pending.token_name,
-    tokenSymbol: v.normalized,
-    ttlSeconds: 900,
-  });
-  await ctx.reply(
-    `✅ Ticker: <b>$${v.normalized}</b>\n\nSend an <b>image URL</b> (https://...) or type <code>skip</code>.\n\n<i>Step 3 of 3.</i>`,
-    { parse_mode: 'HTML' },
-  );
-}
-
-async function handleForgeImage(
-  ctx: Context,
-  pending: { token_name: string | null; token_symbol: string | null },
-  raw: string,
-): Promise<void> {
-  const from = ctx.from;
-  if (!from || !pending.token_name || !pending.token_symbol) return;
-  const v = validateImageUrl(raw);
-  if (!v.ok) {
-    await ctx.reply(`❌ ${v.reason}`);
-    return;
-  }
-  const imageUrl = raw.trim().toLowerCase() === 'skip' ? null : raw.trim();
-  await setPendingForgeStep({
-    telegramId: from.id,
-    step: 'awaiting_confirm',
-    tokenName: pending.token_name,
-    tokenSymbol: pending.token_symbol,
-    imageUrl,
-    ttlSeconds: 900,
-  });
-  await ctx.reply(
-    buildForgeSummary({
-      name: pending.token_name,
-      ticker: pending.token_symbol,
-      imageUrl,
-    }),
-    {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '✅ Deploy', callback_data: 'fg:dep' },
-            { text: '❌ Cancel', callback_data: 'fg:cn' },
-          ],
-        ],
-      },
-    },
-  );
-}
-
-bot.on('callback_query', async (ctx, next) => {
-  const cq = ctx.callbackQuery;
-  if (!cq || !('data' in cq) || !cq.data) return next();
-  if (!cq.data.startsWith('fg:')) return next();
-  const from = ctx.from;
-  if (!from) return next();
-
-  await ctx.answerCbQuery();
-
-  if (!isAdmin(from.id)) {
-    await ctx.answerCbQuery('🚫 Not an admin', { show_alert: true }).catch(() => undefined);
-    return;
-  }
-
-  const pending = await getPendingForge(from.id);
-  if (!pending || pending.step !== 'awaiting_confirm' || !pending.token_name || !pending.token_symbol) {
-    await ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => undefined);
-    await ctx.reply('Forge state expired. Run /forge to start again.');
-    return;
-  }
-
-  if (cq.data === 'fg:cn') {
-    await clearPendingForge(from.id).catch(() => undefined);
-    await ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => undefined);
-    await ctx.reply('🛑 Forge cancelled.');
-    return;
-  }
-
-  if (cq.data !== 'fg:dep') return;
-
-  await ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => undefined);
-  await ctx.reply('🔥 <b>Forging…</b> <i>Awaiting Bankr.</i>', { parse_mode: 'HTML' });
-
-  let attempt;
-  try {
-    attempt = await recordForgeAttempt({
-      callerTelegramId: from.id,
-      callerUsername: from.username ?? null,
-      tokenName: pending.token_name,
-      tokenSymbol: pending.token_symbol,
-      imageUrl: pending.image_url,
-      feeRecipientWallet: process.env.BANKR_FEE_RECIPIENT_WALLET ?? null,
-    });
-  } catch (err) {
-    console.error('[forge] recordForgeAttempt failed', err);
-    await ctx.reply('⚠️ Could not record forge attempt. Aborted.');
-    return;
-  }
-
-  try {
-    const result = await deployBankrToken({
-      tokenName: pending.token_name,
-      tokenSymbol: pending.token_symbol,
-      imageUrl: pending.image_url ?? undefined,
-    });
-    await markForgeSuccess(attempt.id, {
-      contractAddress: result.tokenAddress ?? null,
-      transactionHash: result.transactionHash ?? null,
-      bankrResponse: result.raw,
-    });
-    await clearPendingForge(from.id).catch(() => undefined);
-
-    const lines = [
-      '🎉 <b>Token forged.</b>',
-      '',
-      `Name: <b>${pending.token_name}</b>`,
-      `Ticker: <b>$${pending.token_symbol}</b>`,
-    ];
-    if (result.tokenAddress) {
-      lines.push(`CA: <code>${result.tokenAddress}</code>`);
-      lines.push(`📈 <a href="https://dexscreener.com/base/${result.tokenAddress}">DexScreener</a>  ·  🔍 <a href="https://basescan.org/token/${result.tokenAddress}">Basescan</a>`);
-    }
-    if (result.transactionHash) {
-      lines.push(`Tx: <code>${result.transactionHash}</code>`);
-    }
-    if (!result.tokenAddress && !result.transactionHash) {
-      lines.push('');
-      lines.push('<i>Bankr accepted the request but didn\'t return an address yet. Check the dashboard.</i>');
-    }
-    await ctx.reply(lines.join('\n'), {
-      parse_mode: 'HTML',
-      // @ts-expect-error - Telegraf types may lag behind API
-      disable_web_page_preview: true,
-    });
-  } catch (err) {
-    const message =
-      err instanceof BankrError
-        ? `Bankr error ${err.status}: ${err.body.slice(0, 400)}`
-        : (err as Error).message;
-    console.error('[forge] deploy failed', err);
-    await markForgeFailure(attempt.id, message).catch(() => undefined);
-    await clearPendingForge(from.id).catch(() => undefined);
-    await ctx.reply(`❌ <b>Forge failed.</b>\n<code>${message.slice(0, 800)}</code>`, { parse_mode: 'HTML' });
-  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1246,35 +999,6 @@ bot.on('text', async (ctx, next) => {
   const msg = ctx.message;
   const text = msg && 'text' in msg ? msg.text.trim() : '';
   if (!text || text.startsWith('/')) return next();
-
-  // 0. Active /forge wizard? Route by step (admin-only).
-  // Defense-in-depth: even though only admins can create pending_forge via
-  // bot.command('forge'), we re-check here. If a non-admin somehow has a
-  // row (admin demoted mid-wizard, manual DB insert, future regression),
-  // we silently drop the wizard.
-  if (isAdmin(from.id)) {
-    const pendingForge = await getPendingForge(from.id).catch(() => null);
-    if (pendingForge) {
-      if (pendingForge.step === 'awaiting_name') {
-        await handleForgeName(ctx, text);
-        return;
-      }
-      if (pendingForge.step === 'awaiting_ticker') {
-        await handleForgeTicker(ctx, pendingForge, text);
-        return;
-      }
-      if (pendingForge.step === 'awaiting_image') {
-        await handleForgeImage(ctx, pendingForge, text);
-        return;
-      }
-      // awaiting_confirm: ignore typed text, await callback button
-      return;
-    }
-  } else {
-    // Non-admin with a stray pending_forge row: clear it silently.
-    const stray = await getPendingForge(from.id).catch(() => null);
-    if (stray) await clearPendingForge(from.id).catch(() => undefined);
-  }
 
   // 1. Active /callnow wizard? Route by step.
   const pendingCall = await getPendingCall(from.id).catch(() => null);
