@@ -14,6 +14,7 @@ import {
 import { registerGateCommands, handleStart, buildHelpMessage } from '../src/gate/commands';
 import {
   checkAndIncrementDailyUsage,
+  checkRateLimit,
   claimTelegramUpdate,
   clearPendingOracle,
   getPendingOracle,
@@ -68,6 +69,24 @@ import {
   validateTokenName,
   validateTokenSymbol,
 } from '../src/bankr';
+import {
+  getEarliestTokenCall,
+  getLatestTokenCallForChat,
+  getTokenCall,
+  markTokenCallCardSent,
+  raiseTokenCallAthByCa,
+  recordTokenCall,
+  type TokenCall,
+} from '../src/oracle/tokencalls';
+import {
+  callerHandle,
+  callMultiplier,
+  fmtAge,
+  formatCaCard,
+  formatFlexFallback,
+  reachedFdv,
+} from '../src/oracle/cacard';
+import { renderFlexCard } from '../src/flex/image';
 
 const token = process.env.TELEGRAM_BOT_TOKEN!;
 // Default Telegraf handlerTimeout is 90s; /invoke can take 1-3 min in the
@@ -582,6 +601,93 @@ bot.command('gods', async (ctx) => {
   } catch (err) {
     console.error('[gods]', err);
     await ctx.reply('⚠️ Could not load the Pantheon right now. Try again shortly.');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /flex — flexcard image for a tracked group call
+// ─────────────────────────────────────────────────────────────────────────────
+
+bot.command('flex', async (ctx) => {
+  const from = ctx.from;
+  const chat = ctx.chat;
+  if (!from || !chat) return;
+
+  // Image rendering is CPU work on the lambda — keep a lid on per-user volume.
+  const { allowed } = await checkRateLimit(from.id, 'flex', 300, 5).catch(() => ({ allowed: true }));
+  if (!allowed) {
+    await ctx.reply('⏳ Easy, flexer — max 5 cards per 5 minutes.');
+    return;
+  }
+
+  const msg = ctx.message;
+  const text = msg && 'text' in msg ? msg.text : '';
+  const arg = text.replace(/^\/flex(@\w+)?/i, '').trim().split(/\s+/)[0] ?? '';
+  const isGroup = chat.type === 'group' || chat.type === 'supergroup';
+
+  let call: TokenCall | null = null;
+  if (arg) {
+    const ca = arg.toLowerCase();
+    if (!isValidEvmAddress(ca)) {
+      await ctx.reply(
+        '🎴 <b>Flex</b>\n\nUsage: <code>/flex 0xContractAddress</code>\nOr bare <code>/flex</code> in a group to flex its latest call.',
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+    // Prefer this group's own call; fall back to the earliest call anywhere.
+    call = isGroup ? await getTokenCall(chat.id, ca).catch(() => null) : null;
+    if (!call) call = await getEarliestTokenCall(ca).catch(() => null);
+  } else if (isGroup) {
+    call = await getLatestTokenCallForChat(chat.id).catch(() => null);
+  } else {
+    await ctx.reply(
+      '🎴 <b>Flex</b>\n\nSend <code>/flex 0xContractAddress</code> — the CA must have been called in a group the Oracle watches.',
+      { parse_mode: 'HTML' },
+    );
+    return;
+  }
+
+  if (!call) {
+    await ctx.reply(
+      '🎴 <b>No tracked call for that token.</b>\n\nPost the CA in a group with the Oracle first — the call (and its FDV snapshot) gets recorded automatically.',
+      { parse_mode: 'HTML' },
+    );
+    return;
+  }
+
+  await ctx.sendChatAction('upload_photo').catch(() => undefined);
+
+  // Fresh snapshot for the live FDV; opportunistically raise the stored peak
+  // so the card never understates the multiplier between cron runs.
+  const snap = await fetchDexScreenerSnapshot(call.contract_address).catch(() => null);
+  const currentFdv = snap?.fdvUsd ?? null;
+  if (currentFdv !== null && currentFdv > (call.ath_fdv ?? 0)) {
+    await raiseTokenCallAthByCa({
+      contractAddress: call.contract_address,
+      newAthFdv: currentFdv,
+      newAthPriceUsd: snap?.priceUsd ?? null,
+    }).catch(() => undefined);
+    call = { ...call, ath_fdv: currentFdv, ath_price_usd: snap?.priceUsd ?? null };
+  }
+
+  const caption = formatFlexFallback({ call, currentFdv });
+  try {
+    const png = await renderFlexCard({
+      ticker: call.ticker || snap?.symbol || call.name || 'TOKEN',
+      fdvAtCall: call.fdv_at_call,
+      reachedFdv: reachedFdv(call, currentFdv),
+      multiplier: callMultiplier(call, currentFdv),
+      ageLabel: fmtAge(call.called_at),
+      caller: callerHandle(call),
+    });
+    await ctx.replyWithPhoto(
+      { source: png, filename: 'transmute-flex.png' },
+      { caption, parse_mode: 'HTML' },
+    );
+  } catch (err) {
+    console.error('[flex] render failed', err);
+    await ctx.reply(caption, { parse_mode: 'HTML' });
   }
 });
 
@@ -1207,6 +1313,105 @@ bot.on('text', async (ctx, next) => {
   }
 
   return next();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group CA auto-detection (RickBot-style card)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Word-bounded so 64-char tx hashes don't half-match as a 40-char address.
+const CA_MENTION_REGEX = /\b(0x[a-fA-F0-9]{40})\b/;
+const CA_AUTOCALL_ENABLED = (process.env.CA_AUTOCALL_ENABLED ?? 'true').toLowerCase() !== 'false';
+const CA_CARD_COOLDOWN_SECONDS = parseInt(process.env.CA_CARD_COOLDOWN_SECONDS || '1800', 10);
+const CA_CARDS_PER_MIN_PER_CHAT = parseInt(process.env.CA_CARDS_PER_MIN_PER_CHAT || '4', 10);
+
+async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
+  const chat = ctx.chat;
+  const from = ctx.from;
+  const msg = ctx.message;
+  if (!chat || !from || !msg) return;
+
+  // Anti-spam layer 1: per-(chat, ca) cooldown. Re-pastes inside the window
+  // are ignored silently — the group already has the card.
+  const existing = await getTokenCall(chat.id, ca).catch(() => null);
+  if (
+    existing?.last_card_at &&
+    Date.now() - new Date(existing.last_card_at).getTime() < CA_CARD_COOLDOWN_SECONDS * 1000
+  ) {
+    return;
+  }
+
+  // Anti-spam layer 2: per-chat flood cap, distinct CAs included. The chat id
+  // occupies the telegram_id column of the shared rate-limit bucket table.
+  const { allowed } = await checkRateLimit(chat.id, 'cacard', 60, CA_CARDS_PER_MIN_PER_CHAT);
+  if (!allowed) return;
+
+  // Ground truth before replying. Unknown token or off-Base pair → stay
+  // silent; a group bot that answers every random hex string is noise.
+  const snap = await fetchDexScreenerSnapshot(ca);
+  if (!snap || snap.chain !== 'base') return;
+
+  let call = existing;
+  let isNew = false;
+  if (!call) {
+    const recorded = await recordTokenCall({
+      chatId: chat.id,
+      chatTitle: 'title' in chat ? chat.title ?? null : null,
+      contractAddress: ca,
+      ticker: snap.symbol,
+      name: snap.name,
+      dexscreenerUrl: snap.url,
+      callerTelegramId: from.id,
+      callerUsername: from.username ?? null,
+      callerFirstName: from.first_name ?? null,
+      fdvAtCall: snap.fdvUsd,
+      priceUsdAtCall: snap.priceUsd,
+      liquidityAtCall: snap.liquidityUsd,
+    });
+    if (!recorded) return;
+    call = recorded.call;
+    isNew = recorded.isNew;
+  }
+
+  // Live FDV above the stored peak → raise it now instead of waiting on cron.
+  if (snap.fdvUsd !== null && snap.fdvUsd > (call.ath_fdv ?? 0)) {
+    await raiseTokenCallAthByCa({
+      contractAddress: ca,
+      newAthFdv: snap.fdvUsd,
+      newAthPriceUsd: snap.priceUsd,
+    }).catch(() => undefined);
+    call = { ...call, ath_fdv: snap.fdvUsd, ath_price_usd: snap.priceUsd };
+  }
+
+  await ctx.reply(formatCaCard({ snapshot: snap, call, isNewCall: isNew }), {
+    parse_mode: 'HTML',
+    reply_parameters: { message_id: msg.message_id },
+    // @ts-expect-error - Telegraf types may lag behind API
+    disable_web_page_preview: true,
+  });
+  await markTokenCallCardSent(call.id).catch(() => undefined);
+}
+
+bot.on('text', async (ctx, next) => {
+  const chat = ctx.chat;
+  const from = ctx.from;
+  if (!CA_AUTOCALL_ENABLED || !chat || !from) return next();
+  if (chat.type !== 'group' && chat.type !== 'supergroup') return next();
+  if (from.is_bot) return;
+
+  const msg = ctx.message;
+  const text = msg && 'text' in msg ? msg.text : '';
+  if (!text || text.startsWith('/')) return next();
+
+  const match = text.match(CA_MENTION_REGEX);
+  if (!match) return next();
+
+  try {
+    await replyWithCaCard(ctx, match[1].toLowerCase());
+  } catch (err) {
+    // The auto-card must never break group message processing.
+    console.warn('[cacard] failed', err);
+  }
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

@@ -7,9 +7,11 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "verify:arena": "tsx scripts/verify-arena-send.ts"
+    "verify:arena": "tsx scripts/verify-arena-send.ts",
+    "flex:templates": "tsx scripts/generate-flex-templates.ts"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@supabase/supabase-js": "^2.103.3",
     "@vercel/functions": "^2.0.0",
     "dotenv": "^16.4.7",

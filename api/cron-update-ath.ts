@@ -18,10 +18,20 @@ import {
   touchCallPollTime,
   updateCallAth,
 } from '../src/oracle/calls';
+import {
+  deactivateTokenCallsOlderThan,
+  listTokenCallsToPoll,
+  raiseTokenCallAthByCa,
+  touchTokenCallPollByCa,
+} from '../src/oracle/tokencalls';
 import { fetchDexScreenerSnapshot } from '../src/dexscreener';
 
 const MAX_AGE_DAYS = 30;
-const POLL_BATCH = 60; // ~ within DexScreener 60 req/min cap when spaced 1s apart
+// Two poll pools share the run: Pantheon calls + group-detected token calls.
+// 40+40 spaced 1s apart stays under DexScreener's ~60 req/min per-IP cap and
+// inside the 240s maxDuration with latency headroom.
+const POLL_BATCH = 40;
+const TOKEN_POLL_BATCH = 40;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const secret = process.env.CRON_SECRET;
@@ -73,8 +83,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await new Promise((r) => setTimeout(r, 1000));
     }
 
-    console.log('[cron-update-ath]', { polled, athsUpdated, deactivated });
-    return res.status(200).json({ ok: true, polled, athsUpdated, deactivated });
+    // Group-detected token calls (auto CA cards + /flex). The same CA may be
+    // tracked by many chats — dedupe so one DexScreener fetch updates all rows.
+    const tokenDeactivated = await deactivateTokenCallsOlderThan(MAX_AGE_DAYS);
+    const tokenCalls = await listTokenCallsToPoll(MAX_AGE_DAYS, TOKEN_POLL_BATCH);
+    const uniqueCas = [...new Set(tokenCalls.map((c) => c.contract_address))];
+    let tokenPolled = 0;
+    let tokenAthsUpdated = 0;
+
+    for (const ca of uniqueCas) {
+      tokenPolled += 1;
+      const snap = await fetchDexScreenerSnapshot(ca);
+      if (snap?.fdvUsd != null) {
+        const hasNewHigh = tokenCalls.some(
+          (c) => c.contract_address === ca && snap.fdvUsd! > (c.ath_fdv ?? 0),
+        );
+        if (hasNewHigh) {
+          await raiseTokenCallAthByCa({
+            contractAddress: ca,
+            newAthFdv: snap.fdvUsd,
+            newAthPriceUsd: snap.priceUsd,
+          });
+          tokenAthsUpdated += 1;
+        }
+      }
+      await touchTokenCallPollByCa(ca);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    console.log('[cron-update-ath]', {
+      polled,
+      athsUpdated,
+      deactivated,
+      tokenPolled,
+      tokenAthsUpdated,
+      tokenDeactivated,
+    });
+    return res.status(200).json({
+      ok: true,
+      polled,
+      athsUpdated,
+      deactivated,
+      tokenPolled,
+      tokenAthsUpdated,
+      tokenDeactivated,
+    });
   } catch (err) {
     console.error('[cron-update-ath] failed', err);
     return res.status(500).json({ ok: false, error: (err as Error).message });

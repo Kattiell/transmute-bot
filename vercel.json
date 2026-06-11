@@ -4,7 +4,8 @@
   "framework": null,
   "functions": {
     "api/webhook.ts": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "includeFiles": "assets/**"
     },
     "api/set-webhook.ts": {
       "maxDuration": 10
@@ -13,7 +14,7 @@
       "maxDuration": 60
     },
     "api/cron-update-ath.ts": {
-      "maxDuration": 120
+      "maxDuration": 240
     },
     "api/internal/arena/send.ts": {
       "maxDuration": 10
