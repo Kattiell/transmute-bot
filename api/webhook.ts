@@ -1129,7 +1129,7 @@ bot.on('text', async (ctx, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Group CA auto-detection (RickBot-style card)
+// CA auto-detection (RickBot-style card) — groups and bot DMs
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Word-bounded so 64-char tx hashes don't half-match as a 40-char address.
@@ -1228,7 +1228,12 @@ bot.on('text', async (ctx, next) => {
   const chat = ctx.chat;
   const from = ctx.from;
   if (!CA_AUTOCALL_ENABLED || !chat || !from) return next();
-  if (chat.type !== 'group' && chat.type !== 'supergroup') return next();
+  // DMs are included: the stateful-flow router above runs first, so a CA
+  // pasted mid-wizard (/callnow, /oracle) is consumed there and never
+  // reaches this handler.
+  if (chat.type !== 'group' && chat.type !== 'supergroup' && chat.type !== 'private') {
+    return next();
+  }
   if (from.is_bot) return;
 
   const msg = ctx.message;

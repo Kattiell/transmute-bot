@@ -1,6 +1,6 @@
 /**
- * Telegram-HTML card rendered when someone posts a Base CA in a group
- * (RickBurpBot-style auto-reply). All user/token-derived strings are escaped
+ * Telegram-HTML card rendered when someone posts a Base CA in a group or in
+ * the bot DM (RickBurpBot-style auto-reply). All user/token-derived strings are escaped
  * before they touch HTML parse mode — token names and Telegram first names
  * are attacker-controlled input.
  */
