@@ -21,13 +21,6 @@ function fmtUsdCompact(n: number | null | undefined): string {
   return `$${n.toFixed(6)}`;
 }
 
-function fmtPrice(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return '?';
-  if (n >= 1) return `$${n.toFixed(4)}`;
-  // Microcap prices need significant digits, not fixed decimals.
-  return `$${n.toPrecision(4)}`;
-}
-
 export function fmtMultiplier(x: number | null): string {
   if (x === null || !Number.isFinite(x)) return '—';
   if (x >= 100) return `${x.toFixed(0)}x`;
@@ -84,15 +77,20 @@ export function formatCaCard(opts: {
   const { snapshot: snap, call, isNewCall } = opts;
   const ticker = snap.symbol ? `$${snap.symbol.toUpperCase()}` : 'TOKEN';
   const handle = callerHandle(call);
+  // Highest FDV seen since the call was first tracked; the field renders even
+  // before a value exists so the card layout stays stable.
+  const ath = reachedFdv(call, snap.fdvUsd);
 
   const lines = [
     `▣ <b>${esc(ticker)}</b> — <i>${esc(snap.name || 'Unknown')}</i>`,
     `🔵 Base · 📈 <a href="${esc(snap.url)}">DexScreener</a> · 🔍 <a href="https://basescan.org/token/${esc(snap.address.toLowerCase())}">Basescan</a>`,
     `<code>${esc(snap.address.toLowerCase())}</code>`,
     '',
-    `💰 FDV: <b>${fmtUsdCompact(snap.fdvUsd)}</b> · 💧 Liq: <b>${fmtUsdCompact(snap.liquidityUsd)}</b>`,
-    `📊 Vol 24h: <b>${fmtUsdCompact(snap.volume24hUsd)}</b> · ⏳ Pair age: <b>${pairAge(snap.pairAgeDays)}</b>`,
-    `💵 Price: <b>${fmtPrice(snap.priceUsd)}</b>`,
+    `💰 FDV: <b>${fmtUsdCompact(snap.fdvUsd)}</b>`,
+    `👁️ ATH: <b>${ath === null ? '$???' : fmtUsdCompact(ath)}</b>`,
+    `💧 LIQ: <b>${fmtUsdCompact(snap.liquidityUsd)}</b>`,
+    `📊 VOL 24h: <b>${fmtUsdCompact(snap.volume24hUsd)}</b>`,
+    `⏳ Pair age: <b>${pairAge(snap.pairAgeDays)}</b>`,
     '',
   ];
 

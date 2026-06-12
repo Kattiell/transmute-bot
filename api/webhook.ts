@@ -24,7 +24,7 @@ import {
   setPendingOracle,
 } from '../src/gate/db';
 import { getTokenBalance, formatTokenAmount } from '../src/gate/blockchain';
-import { DAILY_LIMITS, GATE_CONFIG, getAdminTelegramIds, isAdmin } from '../src/gate/config';
+import { DAILY_LIMITS, GATE_CONFIG, getAdminTelegramIds, isAdmin, isExemptWallet } from '../src/gate/config';
 import {
   fetchDexScreenerSnapshot,
   isValidEvmAddress,
@@ -111,6 +111,18 @@ async function sendMessages(
 }
 
 bot.start(async (ctx) => {
+  // Deep link from the CA card's "Call Now" button:
+  // https://t.me/<bot>?start=callnow → jump straight into the wizard.
+  const msg = ctx.message;
+  const text = msg && 'text' in msg ? msg.text : '';
+  const payload = text.replace(/^\/start(@\w+)?/i, '').trim().toLowerCase();
+  if (payload === 'callnow' && ctx.chat?.type === 'private') {
+    // /start bypasses the premium gate middleware, so re-check entitlement
+    // here the same way the conversational flows do.
+    if (!(await ensurePremiumActive(ctx))) return;
+    await beginCallNowWizard(ctx);
+    return;
+  }
   await handleStart(ctx);
 });
 bot.help((ctx) => ctx.reply(buildHelpMessage(), { parse_mode: 'HTML' }));
@@ -237,18 +249,21 @@ async function ensurePremiumActive(ctx: Context): Promise<boolean> {
     await ctx.reply('⏰ <b>Verification expired.</b> Run /relink.', { parse_mode: 'HTML' });
     return false;
   }
-  try {
-    const balance = await getTokenBalance(link.wallet_address);
-    if (!balance.meetsMinimum) {
-      await ctx.reply(
-        `❌ <b>Insufficient balance.</b>\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE`,
-        { parse_mode: 'HTML' },
-      );
+  // God-mode wallets skip the on-chain balance gate, same as the middleware.
+  if (!isExemptWallet(link.wallet_address)) {
+    try {
+      const balance = await getTokenBalance(link.wallet_address);
+      if (!balance.meetsMinimum) {
+        await ctx.reply(
+          `❌ <b>Insufficient balance.</b>\nCurrent: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE`,
+          { parse_mode: 'HTML' },
+        );
+        return false;
+      }
+    } catch {
+      await ctx.reply('⚠️ Could not verify balance right now. Try again shortly.');
       return false;
     }
-  } catch {
-    await ctx.reply('⚠️ Could not verify balance right now. Try again shortly.');
-    return false;
   }
   return true;
 }
@@ -381,17 +396,10 @@ const THESIS_MAX_LEN = 150;
 const CALLNOW_COOLDOWN_SECONDS = 6 * 3600; // 6h between submissions per user
 const MIN_LIQUIDITY_USD = parseInt(process.env.CALLNOW_MIN_LIQUIDITY_USD || '500', 10);
 
-bot.command('callnow', async (ctx) => {
+/** Starts the /callnow wizard. Shared by the command and the ?start=callnow deep link. */
+async function beginCallNowWizard(ctx: Context): Promise<void> {
   const from = ctx.from;
-  if (!from || !ctx.chat) return;
-
-  if (ctx.chat.type !== 'private') {
-    await ctx.reply(
-      '𓂀 <b>Call Now</b>\n\nThe ritual is private. Open a DM with the Oracle and run /callnow there.',
-      { parse_mode: 'HTML' },
-    );
-    return;
-  }
+  if (!from) return;
 
   const recent = await recentCallByCaller(from.id, CALLNOW_COOLDOWN_SECONDS).catch(() => null);
   if (recent) {
@@ -417,6 +425,21 @@ bot.command('callnow', async (ctx) => {
       '<i>Step 1 of 2 — 10 minutes to respond.</i>',
     { parse_mode: 'HTML' },
   );
+}
+
+bot.command('callnow', async (ctx) => {
+  const from = ctx.from;
+  if (!from || !ctx.chat) return;
+
+  if (ctx.chat.type !== 'private') {
+    await ctx.reply(
+      '𓂀 <b>Call Now</b>\n\nThe ritual is private. Open a DM with the Oracle and run /callnow there.',
+      { parse_mode: 'HTML' },
+    );
+    return;
+  }
+
+  await beginCallNowWizard(ctx);
 });
 
 async function handleCallWizardCa(
@@ -967,6 +990,72 @@ bot.on('callback_query', async (ctx, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CA card refresh callback (cc:rf:0x…) — re-fetch DexScreener, edit in place
+// ─────────────────────────────────────────────────────────────────────────────
+
+bot.on('callback_query', async (ctx) => {
+  const cq = ctx.callbackQuery;
+  if (!cq || !('data' in cq) || !cq.data) return;
+  const from = ctx.from;
+  const match = cq.data.match(/^cc:rf:(0x[a-f0-9]{40})$/);
+  if (!match || !from) {
+    await ctx.answerCbQuery().catch(() => undefined);
+    return;
+  }
+  const ca = match[1];
+
+  // Each tap costs a DexScreener fetch + a message edit — cap per-user volume.
+  const { allowed } = await checkRateLimit(from.id, 'ccrefresh', 60, 6).catch(() => ({ allowed: true }));
+  if (!allowed) {
+    await ctx.answerCbQuery('⏳ Easy — refresh again in a minute.').catch(() => undefined);
+    return;
+  }
+
+  // Prefer this chat's own call (preserves the original caller line); fall
+  // back to the earliest call anywhere so the button still works after a
+  // forward into another chat.
+  const chatId = cq.message?.chat.id;
+  let call = chatId !== undefined ? await getTokenCall(chatId, ca).catch(() => null) : null;
+  if (!call) call = await getEarliestTokenCall(ca).catch(() => null);
+  const snap = await fetchDexScreenerSnapshot(ca).catch(() => null);
+  if (!call || !snap) {
+    await ctx.answerCbQuery('⚠️ Could not fetch fresh data — try again shortly.').catch(() => undefined);
+    return;
+  }
+
+  // Same opportunistic ATH raise as the original card path.
+  if (snap.fdvUsd !== null && snap.fdvUsd > (call.ath_fdv ?? 0)) {
+    await raiseTokenCallAthByCa({
+      contractAddress: ca,
+      newAthFdv: snap.fdvUsd,
+      newAthPriceUsd: snap.priceUsd,
+    }).catch(() => undefined);
+    call = { ...call, ath_fdv: snap.fdvUsd, ath_price_usd: snap.priceUsd };
+  }
+
+  try {
+    await ctx.editMessageText(formatCaCard({ snapshot: snap, call, isNewCall: false }), {
+      parse_mode: 'HTML',
+      reply_markup: caCardKeyboard(ctx, ca),
+      // @ts-expect-error - Telegraf types may lag behind API
+      disable_web_page_preview: true,
+    });
+    await ctx.answerCbQuery('🔄 Card updated').catch(() => undefined);
+  } catch (err) {
+    // Telegram rejects no-op edits with 400 "message is not modified".
+    const desc =
+      (err as { description?: string })?.description ??
+      (err instanceof Error ? err.message : String(err));
+    if (desc.includes('message is not modified')) {
+      await ctx.answerCbQuery('✓ Already up to date').catch(() => undefined);
+    } else {
+      console.warn('[cacard] refresh edit failed', err);
+      await ctx.answerCbQuery('⚠️ Could not update the card.').catch(() => undefined);
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // /cancel — abort any active wizard
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1049,6 +1138,24 @@ const CA_AUTOCALL_ENABLED = (process.env.CA_AUTOCALL_ENABLED ?? 'true').toLowerC
 const CA_CARD_COOLDOWN_SECONDS = parseInt(process.env.CA_CARD_COOLDOWN_SECONDS || '1800', 10);
 const CA_CARDS_PER_MIN_PER_CHAT = parseInt(process.env.CA_CARDS_PER_MIN_PER_CHAT || '4', 10);
 
+/**
+ * Inline keyboard under every CA card. "Call Now" deep-links into the bot DM
+ * and auto-starts the /callnow wizard; "Refresh" re-fetches DexScreener and
+ * edits the card in place (cc:rf:<ca> stays under Telegram's 64-byte
+ * callback_data cap: 6 + 42 chars).
+ */
+function caCardKeyboard(ctx: Context, ca: string) {
+  const botUsername = ctx.botInfo?.username ?? 'TransmuteOracle_bot';
+  return {
+    inline_keyboard: [
+      [
+        { text: '🚀 Call Now', url: `https://t.me/${botUsername}?start=callnow` },
+        { text: '🔄 Refresh', callback_data: `cc:rf:${ca.toLowerCase()}` },
+      ],
+    ],
+  };
+}
+
 async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
   const chat = ctx.chat;
   const from = ctx.from;
@@ -1110,6 +1217,7 @@ async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
   await ctx.reply(formatCaCard({ snapshot: snap, call, isNewCall: isNew }), {
     parse_mode: 'HTML',
     reply_parameters: { message_id: msg.message_id },
+    reply_markup: caCardKeyboard(ctx, ca),
     // @ts-expect-error - Telegraf types may lag behind API
     disable_web_page_preview: true,
   });
