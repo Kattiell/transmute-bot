@@ -1,6 +1,10 @@
 import { ORACLE_PROMPT } from './prompts';
 
-const GROK_API_URL = 'https://api.x.ai/v1/responses';
+// Venice.ai inference (OpenAI-compatible). Routes through Venice instead of
+// xAI directly; the `grok-4-20` model keeps behavior (native web + X search)
+// close to the original Grok path. Mirror of nous-app's src/lib/api/grok.ts.
+const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
+const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-20';
 
 function extractTextFromGrokResponse(data: Record<string, unknown>): string {
   const texts: string[] = [];
@@ -47,10 +51,10 @@ function extractTextFromGrokResponse(data: Record<string, unknown>): string {
  * sent raw, exactly as the caller authored them.
  */
 async function callGrok(prompt: string): Promise<string> {
-  const apiKey = process.env.GROK_API_KEY;
-  if (!apiKey) throw new Error('GROK_API_KEY not configured');
+  const apiKey = process.env.VENICE_API_KEY;
+  if (!apiKey) throw new Error('VENICE_API_KEY not configured');
 
-  // Hard-cap the Grok call so a hung API request can't silently eat the whole
+  // Hard-cap the Venice call so a hung API request can't silently eat the whole
   // 300s Lambda budget. 240s leaves 60s for parsing + Telegram sends.
   const controller = new AbortController();
   const timeoutMs = 240_000;
@@ -60,23 +64,27 @@ async function callGrok(prompt: string): Promise<string> {
   console.log('[grok] call start');
 
   try {
-    const res = await fetch(GROK_API_URL, {
+    const res = await fetch(VENICE_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'grok-4.20-reasoning',
-        input: prompt,
-        tools: [{ type: 'web_search' }],
+        model: VENICE_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        // Mirrors Grok's always-on web_search via Venice's native web + X search.
+        venice_parameters: {
+          enable_web_search: 'on',
+          enable_web_citations: true,
+        },
       }),
       signal: controller.signal,
     });
 
     if (!res.ok) {
       const body = await res.text();
-      throw new Error(`Grok API error ${res.status}: ${body}`);
+      throw new Error(`Venice API error ${res.status}: ${body}`);
     }
 
     const data = (await res.json()) as Record<string, unknown>;
@@ -87,7 +95,7 @@ async function callGrok(prompt: string): Promise<string> {
     const elapsed = Date.now() - start;
     if (controller.signal.aborted) {
       console.error(`[grok] call timed out after ${elapsed}ms`);
-      throw new Error(`Grok API timed out after ${timeoutMs / 1000}s`);
+      throw new Error(`Venice API timed out after ${timeoutMs / 1000}s`);
     }
     console.error(`[grok] call failed in ${elapsed}ms`, err);
     throw err;

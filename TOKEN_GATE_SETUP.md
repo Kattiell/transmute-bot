@@ -40,7 +40,7 @@ In Supabase SQL Editor, run both in order:
 | `BASE_RPC_3` | no | `https://base-rpc.publicnode.com` | Failover RPC |
 | `GATE_LINK_BASE_URL` | yes | — | e.g. `https://transmute-app.vercel.app` |
 | `CRON_SECRET` | yes | — | Random string for cron auth |
-| `GROK_API_KEY` | yes | — | Existing, unchanged |
+| `VENICE_API_KEY` | yes | — | Venice **Inference** key (Admin keys 401 on inference). Powers Oracle/Horus via `grok-4-20` |
 
 ### nous-app (Vercel project)
 
