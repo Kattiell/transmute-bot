@@ -27,7 +27,10 @@ async function callWithFailover<T>(fn: (c: PublicClient) => Promise<T>): Promise
       lastErr = err;
     }
   }
-  throw new Error(`All RPCs failed: ${(lastErr as Error)?.message ?? 'unknown'}`);
+  // L11 (CWE-532): scrub any RPC URL (which may embed an API key) from the
+  // surfaced/logged message.
+  const detail = ((lastErr as Error)?.message ?? 'unknown').replace(/https?:\/\/[^\s'"]+/gi, '[rpc]');
+  throw new Error(`All RPCs failed: ${detail}`);
 }
 
 export interface BalanceResult {

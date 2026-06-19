@@ -2,6 +2,7 @@ import type { Context } from 'telegraf';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { Telegraf } from 'telegraf';
+import { timingSafeEqual } from 'node:crypto';
 import { invokeOracle, invokeOracleWithPrompt } from '../src/grok';
 import { parseOracleOutput } from '../src/parser';
 import { formatWhispersReport, formatGenericReport } from '../src/formatter';
@@ -1254,6 +1255,26 @@ bot.on('text', async (ctx, next) => {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(200).json({ ok: true, message: 'Transmute Oracle Bot is alive' });
+  }
+
+  // SECURITY (H6 / CWE-306): reject forged webhook POSTs. Telegram echoes the
+  // secret token registered via setWebhook in this header. Enforced only when
+  // TELEGRAM_WEBHOOK_SECRET is configured, so the bot keeps working during the
+  // rollout window — set the env in this project AND re-run /api/set-webhook to
+  // activate. Once set, knowing the webhook URL is no longer enough to inject
+  // updates / impersonate users or admins.
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const got = req.headers['x-telegram-bot-api-secret-token'];
+    const ok =
+      typeof got === 'string' &&
+      got.length === webhookSecret.length &&
+      timingSafeEqual(Buffer.from(got), Buffer.from(webhookSecret));
+    if (!ok) {
+      return res.status(401).json({ ok: false });
+    }
+  } else {
+    console.warn('[webhook] TELEGRAM_WEBHOOK_SECRET not set — webhook POSTs are NOT authenticated.');
   }
 
   // Long-running commands like /invoke take 1-3 min, but Telegram times out

@@ -15,14 +15,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Gate this endpoint behind WEBHOOK_SECRET so a stranger can't repoint
   // the webhook (DoS) or flush queued updates (?drop=1) on us. Vercel cron
   // jobs identify themselves with x-vercel-cron and are allowed through.
+  // L9: gate behind WEBHOOK_SECRET. The previous `x-vercel-cron` bypass was
+  // removed — that header is attacker-settable on a direct request and no
+  // configured cron calls this endpoint, so it only weakened the gate.
   const expected = process.env.WEBHOOK_SECRET;
   const provided = typeof req.query.secret === 'string' ? req.query.secret : '';
-  const isVercelCron = !!req.headers['x-vercel-cron'];
-  if (expected && !isVercelCron && provided !== expected) {
+  if (expected && provided !== expected) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
   if (!expected) {
-    console.warn('[set-webhook] WEBHOOK_SECRET not configured — endpoint is public.');
+    console.warn('[set-webhook] WEBHOOK_SECRET not configured — endpoint is public. Set it to protect registration.');
+  }
+
+  // H6: register a secret token so Telegram echoes it back in the
+  // X-Telegram-Bot-Api-Secret-Token header on every webhook POST, letting the
+  // webhook handler reject forged updates from anyone who knows the URL.
+  const webhookSecretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!webhookSecretToken) {
+    console.warn('[set-webhook] TELEGRAM_WEBHOOK_SECRET not set — webhook POSTs will NOT be authenticated. Set it and re-run this endpoint.');
   }
 
   // Derive webhook URL from Vercel deployment
@@ -42,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         allowed_updates: ['message', 'callback_query', 'my_chat_member'],
         max_connections: 40,
         drop_pending_updates: dropPendingUpdates,
+        ...(webhookSecretToken ? { secret_token: webhookSecretToken } : {}),
       }),
     }
   );
