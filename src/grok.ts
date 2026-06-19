@@ -5,9 +5,10 @@ import { ORACLE_PROMPT } from './prompts';
 // close to the original Grok path. Mirror of nous-app's src/lib/api/grok.ts.
 const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
 const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-3';
-// /invoke uses grok-4-20 (native realtime X search for @ verification), scoped
-// separately from VENICE_MODEL (mirror of nous-app).
-const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'grok-4-20';
+// /invoke uses grok-4-20-multi-agent (multi-agent Grok with native realtime X
+// search for @ verification; parallel research/verify agents for deeper
+// microcap discovery), scoped separately from VENICE_MODEL (mirror of nous-app).
+const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'grok-4-20-multi-agent';
 
 function extractTextFromGrokResponse(data: Record<string, unknown>): string {
   const texts: string[] = [];
