@@ -76,9 +76,9 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
       body: JSON.stringify({
         model: model || VENICE_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        // High reasoning effort (xhigh + scraping was timing the call out) +
-        // generous completion budget so a full report isn't truncated.
-        reasoning: { effort: 'high' },
+        // Max reasoning effort (xhigh — deep thinking). /invoke uses fast
+        // grok-4-20 with scraping off, so xhigh fits the timeout budget.
+        reasoning: { effort: 'xhigh' },
         max_completion_tokens: 40000,
         // Mirrors Grok's always-on web_search via Venice's native web + X search.
         venice_parameters: {
