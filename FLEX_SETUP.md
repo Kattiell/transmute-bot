@@ -37,19 +37,27 @@ plain messages containing CAs, either:
 | `VENICE_IMAGE_MODEL` | `venice-sd35` | Venice image model id |
 | `VENICE_API_BASE` | `https://api.venice.ai/api/v1` | Override for testing |
 
-## 4. Generate the 5 background templates (Venice AI)
+## 4. Background templates
 
-```bash
-VENICE_API_KEY=... npm run flex:templates
-```
+Production uses the curated TRANSMUTE penguin artworks committed under
+`assets/flex-templates/` (`template-01..13.jpeg`). `renderFlexCard` lists every
+`*.png`/`*.jpe?g` in that folder and picks one **at random per card**, so they
+rotate with no fixed criteria. Vercel bundles `assets/**` into the webhook
+lambda (`vercel.json → functions → api/webhook.ts → includeFiles`), so the
+committed images ship to prod automatically.
 
-Writes `assets/flex-templates/template-{1..5}.png`. Curate: re-run to replace
-any you dislike (edit the prompts in `scripts/generate-flex-templates.ts`),
-then **commit the PNGs** — Vercel bundles `assets/**` into the webhook lambda
-(`vercel.json → functions → api/webhook.ts → includeFiles`).
+To swap the set: drop new 16:9 images in (or remove ones you dislike) and
+commit — no code change needed. Each artwork already carries the TRANSMUTE
+logo bottom-right, and the overlay text lives on the open left side, so keep
+that composition (subject on the right, dark/empty area on the left).
 
-Until templates exist, `/flex` uses 5 built-in procedural gradient backgrounds,
-so the feature works immediately.
+If the folder is ever empty (e.g. local dev before assets are pulled), `/flex`
+falls back to built-in procedural gradient backgrounds and stamps its own
+`TRANSMUTE ORACLE` wordmark, so the feature still works.
+
+`scripts/generate-flex-templates.ts` + Venice (`npm run flex:templates`) remain
+available as an *optional* way to generate fresh backgrounds, but are no longer
+the source of the production templates.
 
 ### Why Venice generates templates offline instead of composing at runtime
 

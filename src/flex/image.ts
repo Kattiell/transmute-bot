@@ -4,8 +4,13 @@
  * Strategy: compose an SVG (template art as background + dynamic call data as
  * crisp vector text) and rasterize it with @resvg/resvg-js. Text rendered this
  * way is always sharp and never garbled — unlike asking an image model to
- * paint typography. Venice AI's job is generating the 5 background templates
- * offline (scripts/generate-flex-templates.ts), not compositing at runtime.
+ * paint typography.
+ *
+ * Backgrounds are the curated TRANSMUTE penguin artworks committed under
+ * assets/flex-templates/ — one is picked at random per card so they rotate.
+ * Each already carries the TRANSMUTE brand logo (bottom-right), so the overlay
+ * keeps text on the open left side and skips its own wordmark over templates.
+ * If the folder is empty (dev), a procedural gradient fallback is used instead.
  *
  * Fonts are bundled in assets/fonts (Chakra Petch, OFL license) and loaded
  * explicitly with loadSystemFonts: false — Vercel lambdas ship no usable
@@ -191,10 +196,19 @@ export async function renderFlexCard(data: FlexCardData): Promise<Buffer> {
 
   const templates = listTemplateFiles();
   const variant = Math.floor(Math.random() * Math.max(templates.length, PALETTES.length));
-  const background =
-    templates.length > 0
-      ? templateBackground(templates[variant % templates.length])
-      : proceduralBackground(variant);
+  const usingTemplate = templates.length > 0;
+  const background = usingTemplate
+    ? templateBackground(templates[variant % templates.length])
+    : proceduralBackground(variant);
+
+  // The curated TRANSMUTE artworks already carry the brand logo in the
+  // bottom-right corner, so the wordmark is drawn ONLY over the plain
+  // procedural fallback — otherwise it would collide with the baked-in logo.
+  const watermark = usingTemplate
+    ? ''
+    : `<text x="${FLEX_WIDTH - 64}" y="${FLEX_HEIGHT - 48}" text-anchor="end"
+        font-family="Chakra Petch" font-weight="500" font-size="28" letter-spacing="6"
+        fill="#d4af37" fill-opacity="0.95" filter="url(#textShadow)">TRANSMUTE ORACLE</text>`;
 
   const svg = `<svg width="${FLEX_WIDTH}" height="${FLEX_HEIGHT}" viewBox="0 0 ${FLEX_WIDTH} ${FLEX_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -212,9 +226,9 @@ export async function renderFlexCard(data: FlexCardData): Promise<Buffer> {
       <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#000000" flood-opacity="0.85"/>
     </filter>
     <linearGradient id="scrim" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#000000" stop-opacity="0.78"/>
-      <stop offset="0.55" stop-color="#000000" stop-opacity="0.38"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.08"/>
+      <stop offset="0" stop-color="#000000" stop-opacity="0.62"/>
+      <stop offset="0.5" stop-color="#000000" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
     </linearGradient>
     <linearGradient id="bottomScrim" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#000000" stop-opacity="0"/>
@@ -225,7 +239,7 @@ export async function renderFlexCard(data: FlexCardData): Promise<Buffer> {
   ${background}
 
   <rect width="${FLEX_WIDTH}" height="${FLEX_HEIGHT}" fill="url(#scrim)"/>
-  <rect y="${FLEX_HEIGHT - 200}" width="${FLEX_WIDTH}" height="200" fill="url(#bottomScrim)"/>
+  <rect y="${FLEX_HEIGHT - 200}" width="${Math.round(FLEX_WIDTH * 0.62)}" height="200" fill="url(#bottomScrim)"/>
   <rect x="0" y="0" width="${FLEX_WIDTH}" height="6" fill="#a3e635" fill-opacity="0.9"/>
 
   <text x="72" y="150" font-family="Chakra Petch" font-weight="600" font-size="64"
@@ -239,9 +253,7 @@ export async function renderFlexCard(data: FlexCardData): Promise<Buffer> {
   <text x="72" y="612" font-family="Chakra Petch" font-weight="600" font-size="48"
         fill="#fde68a" filter="url(#textShadow)">Reached ${reached}</text>
 
-  <text x="${FLEX_WIDTH - 64}" y="${FLEX_HEIGHT - 48}" text-anchor="end"
-        font-family="Chakra Petch" font-weight="500" font-size="28" letter-spacing="6"
-        fill="#d4af37" fill-opacity="0.95" filter="url(#textShadow)">TRANSMUTE ORACLE</text>
+  ${watermark}
 </svg>`;
 
   const fontFiles = listFontFiles();
