@@ -1,10 +1,10 @@
 import { ORACLE_PROMPT } from './prompts';
 
 // Venice.ai inference (OpenAI-compatible). Routes through Venice instead of
-// xAI directly; the `grok-4-20` model keeps behavior (native web + X search)
+// xAI directly; the `grok-4-3` model keeps behavior (native web + X search)
 // close to the original Grok path. Mirror of nous-app's src/lib/api/grok.ts.
 const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
-const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-20';
+const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-3';
 
 function extractTextFromGrokResponse(data: Record<string, unknown>): string {
   const texts: string[] = [];
@@ -73,10 +73,18 @@ async function callGrok(prompt: string): Promise<string> {
       body: JSON.stringify({
         model: VENICE_MODEL,
         messages: [{ role: 'user', content: prompt }],
+        // Max reasoning (xhigh effort) + generous completion budget so a full
+        // report is never truncated. Reasoning tokens count toward the cap.
+        reasoning: { effort: 'xhigh' },
+        max_completion_tokens: 40000,
         // Mirrors Grok's always-on web_search via Venice's native web + X search.
         venice_parameters: {
           enable_web_search: 'on',
+          enable_x_search: true,
           enable_web_citations: true,
+          // Reasoning stays ON, but strip the model's <think> blocks from the
+          // response so the parser only sees the final structured output.
+          strip_thinking_response: true,
         },
       }),
       signal: controller.signal,
