@@ -79,7 +79,7 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
         // Max reasoning effort (xhigh — deep thinking). /invoke uses fast
         // grok-4-20 with scraping off, so xhigh fits the timeout budget.
         reasoning: { effort: 'xhigh' },
-        max_completion_tokens: 40000,
+        max_completion_tokens: 64000,
         // Mirrors Grok's always-on web_search via Venice's native web + X search.
         venice_parameters: {
           enable_web_search: 'on',
