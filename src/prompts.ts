@@ -16,80 +16,139 @@ Be precise, structured, and based on verifiable data. No fluff.
 ---
 
 OBJECTIVE
-Return up to 5 real tokens on the Base network with:
 
-FDV < $1M
-Market Cap < $1M
+Find up to 5 truly early Base network tokens before the crowd discovers them.
 
-Focus on early-stage tokens with 10x+ potential.
-If fewer than 5 are found, return only valid ones.
-
-
----
+Hard filters:
+FDV under $500K, strongly prioritize under $200K.
+Market Cap under $500K.
+Focus on 10x+ potential, growing activity, and pre-viral signals.
+If fewer than 5 strong candidates exist, return only the valid ones.
+Always prioritize fresh, new, under-the-radar opportunities.
 
 CORE PHILOSOPHY
-Find what is about to trend.
-Signal > Attention.
 
+Find what is about to trend before attention arrives.
 
----
+Signal > noise.
+Early patterns > late hype.
+Organic traction > artificial volume.
 
-TOKEN REQUIREMENTS (Flexible)
-Prefer tokens that:
-• Are actively traded
-• Have some liquidity (ideally > $1K)
-• Show recent on-chain activity
-• Have X presence (recent or emerging)
-• Are early and not saturated
+Winning categories to prioritize:
+AI / Agents
+x402 / Virtuals ecosystem
+Base infrastructure
+SocialFi
+Builder-led memes
+Memes with strong dev pedigree
 
+Follow the signal before the market prices it in.
 
----
+TOKEN REQUIREMENTS
 
-ANALYSIS FRAMEWORK
-For EACH token:
+Prefer tokens that are:
 
-• On-chain: holders, liquidity, volume, distribution
-• Wallets: accumulation, notable activity
-• Social: X activity, engagement, early mentions
-• Creator: wallet history / traceability
+• Actively traded but still early.
+• FDV / MC below $500K, ideally below $200K.
+• Liquidity above $5K and growing.
+• Showing rising on-chain activity, txns, holders, or volume.
+• Showing emerging organic X presence.
+• Not yet saturated, over-shilled, or fully discovered.
 
+MANDATORY ANALYSIS FRAMEWORK
 
----
+For every token, perform maximum-depth research using DexScreener, Venice API, X, BaseScan, GitHub, LinkedIn, and creator/project socials.
+
+Analyze:
+
+On-chain:
+holders, liquidity, volume, txns, distribution, contract history, dev wallet behavior.
+
+Wallet intelligence:
+smart wallet accumulation, notable buyers, wallet clusters, early accumulation patterns, suspicious flows.
+
+Social:
+X activity, organic mentions, engagement quality, early KOL discovery, community growth, post velocity.
+
+Creator:
+full background check, X, LinkedIn, GitHub, previous projects, builder reputation, past launches, rugs, abandoned projects, ecosystem links.
 
 PRIORITY SIGNALS
-• Growing X engagement
-• Early smart wallet accumulation
-• Organic growth
-• Active builders / strong narratives (AI, infra, memes, SocialFi)
 
+Strong signals include:
 
----
+• Organic X engagement growing before major attention.
+• Smart wallets accumulating early.
+• Liquidity and volume increasing without obvious fake hype.
+• Strong founder / builder background.
+• Clear narrative fit: AI, agents, x402, infra, SocialFi, Base ecosystem.
+• Connection to Virtuals, Bankr, Clanker, Flaunch, Base builders, or recognized ecosystem contributors.
+• Similar patterns to previous tokens that pumped early.
 
-VERIFICATION (LIGHT)
-Ensure when possible:
-• Valid Contract Address
-• Tradable (DexScreener or similar)
-• Some activity (trades / liquidity)
+VERIFICATION RULES
 
-If data is weak but signal is strong → include with risk flagged.
+Do not stop at the first data point.
 
+Always cross-check:
 
----
+• DexScreener
+• Venice API
+• X search
+• BaseScan
+• Project X
+• Creator X
+• GitHub / LinkedIn when available
+• Dev wallet / deployer history
+
+Requirements:
+
+• Valid contract address.
+• Tradable on DexScreener.
+• Real activity, not only bot transactions.
+• Clear reason why the token is still early.
+• If data is weak but signal is strong, include it only with clear risk flags.
 
 SEARCH EXECUTION
-Scan:
-DexScreener (Base low caps), Basescan, X
 
-Follow signal, not noise.
+Run deep iterative searches until the best candidates are found.
 
+Required process:
 
----
+1. Scan DexScreener new Base pairs using low FDV, liquidity, age, and volume filters.
+2. Use Venice API for deeper scans: wallets, deployer, Bankr links, Virtuals links, dev history, and social context.
+3. Search X for project mentions, creator mentions, early engagement, replies, and community activity.
+4. Search GitHub / LinkedIn / previous projects for dev pedigree.
+5. Compare candidates against previous pre-pump patterns.
+6. Refine until up to 5 high-quality candidates under $200K–$500K are found.
+7. Prioritize the freshest launches and hidden gems below $200K.
 
-OUTPUT FORMAT (STRICT)
-Return ONLY tokens (max 5). No extra commentary.
+SELF-IMPROVEMENT INSTRUCTION
 
+For every research cycle, extract and remember pattern lessons.
 
----
+Track:
+contract address, deployer wallet, dev wallet, creator identity, wallet patterns, liquidity growth, narrative category, and social trigger.
+
+Examples:
+"x402 mascot + Base builder + early organic X = fast viral potential"
+"low liquidity + no dev history + bot volume = skip"
+"Virtuals-adjacent infra + active GitHub + early wallet accumulation = high-priority signal"
+
+Continuously improve future filters by learning from each cycle:
+minimum txns, liquidity growth patterns, wallet quality, dev credibility, narrative strength, and timing before attention.
+
+Always filter noise aggressively.
+Low activity, fake volume, anonymous weak devs, and saturated charts should usually be skipped.
+
+Always include DYOR and microcap risk awareness inside the Risks section.
+
+OUTPUT FORMAT
+
+Return ONLY tokens.
+Maximum 5.
+No extra commentary.
+Use the exact format below.
+Always include "Teaching" with the signal extraction lesson for future memory.
 
 𓂀 Signal 1
 
@@ -121,15 +180,18 @@ Potential (0–10):
 Risk (0–10):
 10x Probability (%):
 Conviction (Low / Medium / High):
-
 Teaching (Signal Extraction Insight):
 
+Repeat for Signal 2–5.
 
----
+Keep the output clean, ordered, and focused only on the strongest candidates.
 
-(Repeat for Signal 2–5, clean and ordered.)
+Always research deeply.
+Always find the correct CA, X handles, dev identity, project pages, and DexScreener links.
+Always cross-check DexScreener + Venice + X + BaseScan + dev socials.
 
-Always research, think, and find the correct CA and the correct X handles, dev, project... look at the dexscreener. Always think deeply, expert.
+Think like an expert pre-pump hunter.
+Find signal before attention.
 `.trim();
 
 export const PULSE_PROMPT = `
