@@ -58,9 +58,9 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
   if (!apiKey) throw new Error('VENICE_API_KEY not configured');
 
   // Hard-cap the Venice call so a hung API request can't silently eat the whole
-  // 300s Lambda budget. 240s leaves 60s for parsing + Telegram sends.
+  // 300s Lambda budget. 270s leaves 30s for parsing + Telegram sends.
   const controller = new AbortController();
-  const timeoutMs = 240_000;
+  const timeoutMs = 270_000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const start = Date.now();
@@ -76,15 +76,14 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
       body: JSON.stringify({
         model: model || VENICE_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        // Max reasoning (xhigh effort) + generous completion budget so a full
-        // report is never truncated. Reasoning tokens count toward the cap.
-        reasoning: { effort: 'xhigh' },
+        // High reasoning effort (xhigh + scraping was timing the call out) +
+        // generous completion budget so a full report isn't truncated.
+        reasoning: { effort: 'high' },
         max_completion_tokens: 40000,
         // Mirrors Grok's always-on web_search via Venice's native web + X search.
         venice_parameters: {
           enable_web_search: 'on',
           enable_x_search: true,
-          enable_web_scraping: true,
           enable_web_citations: true,
           // Reasoning stays ON, but strip the model's <think> blocks from the
           // response so the parser only sees the final structured output.
