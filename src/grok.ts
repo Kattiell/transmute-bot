@@ -5,9 +5,9 @@ import { ORACLE_PROMPT } from './prompts';
 // close to the original Grok path. Mirror of nous-app's src/lib/api/grok.ts.
 const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
 const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-3';
-// /invoke uses a stronger (pricier) model than Pulse/Myths/Pearls/Horus, scoped
-// here so only the manual discovery call inherits it (mirror of nous-app).
-const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'openai-gpt-55-pro';
+// /invoke uses grok-4-20 (native realtime X search for @ verification), scoped
+// separately from VENICE_MODEL (mirror of nous-app).
+const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'grok-4-20';
 
 function extractTextFromGrokResponse(data: Record<string, unknown>): string {
   const texts: string[] = [];
