@@ -173,16 +173,20 @@ export async function raiseTokenCallAthByCa(input: {
   newAthPriceUsd: number | null;
 }): Promise<void> {
   const now = new Date().toISOString();
+  // L12 (CWE-89 defense-in-depth): newAthFdv is interpolated into a PostgREST
+  // `.or()` raw filter below, so coerce + validate it as a finite number first.
+  const athFdv = Number(input.newAthFdv);
+  if (!Number.isFinite(athFdv)) return;
   await db()
     .from('token_calls')
     .update({
-      ath_fdv: input.newAthFdv,
+      ath_fdv: athFdv,
       ath_price_usd: input.newAthPriceUsd,
       ath_recorded_at: now,
       last_polled_at: now,
     })
     .eq('contract_address', input.contractAddress.toLowerCase())
-    .or(`ath_fdv.is.null,ath_fdv.lt.${input.newAthFdv}`);
+    .or(`ath_fdv.is.null,ath_fdv.lt.${athFdv}`);
 }
 
 export async function touchTokenCallPollByCa(ca: string): Promise<void> {
