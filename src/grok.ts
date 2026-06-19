@@ -5,6 +5,9 @@ import { ORACLE_PROMPT } from './prompts';
 // close to the original Grok path. Mirror of nous-app's src/lib/api/grok.ts.
 const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
 const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-3';
+// /invoke uses a stronger (pricier) model than Pulse/Myths/Pearls/Horus, scoped
+// here so only the manual discovery call inherits it (mirror of nous-app).
+const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'openai-gpt-55-pro';
 
 function extractTextFromGrokResponse(data: Record<string, unknown>): string {
   const texts: string[] = [];
@@ -50,7 +53,7 @@ function extractTextFromGrokResponse(data: Record<string, unknown>): string {
  * silence on microcap discovery and has been removed — the prompts are
  * sent raw, exactly as the caller authored them.
  */
-async function callGrok(prompt: string): Promise<string> {
+async function callGrok(prompt: string, model?: string): Promise<string> {
   const apiKey = process.env.VENICE_API_KEY;
   if (!apiKey) throw new Error('VENICE_API_KEY not configured');
 
@@ -71,7 +74,7 @@ async function callGrok(prompt: string): Promise<string> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: VENICE_MODEL,
+        model: model || VENICE_MODEL,
         messages: [{ role: 'user', content: prompt }],
         // Max reasoning (xhigh effort) + generous completion budget so a full
         // report is never truncated. Reasoning tokens count toward the cap.
@@ -114,7 +117,7 @@ async function callGrok(prompt: string): Promise<string> {
 }
 
 export async function invokeOracle(): Promise<string> {
-  return callGrok(ORACLE_PROMPT);
+  return callGrok(ORACLE_PROMPT, ORACLE_INVOKE_MODEL);
 }
 
 export async function invokeOracleWithPrompt(prompt: string): Promise<string> {
