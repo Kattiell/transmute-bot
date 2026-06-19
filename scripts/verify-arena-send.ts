@@ -83,7 +83,7 @@ process.env.TELEGRAM_BOT_TOKEN = 'fake-bot-token-for-test';
 // in the SAME order. Any divergence breaks the HMAC.
 // ────────────────────────────────────────────────────────────────────────────
 
-function clientSign(payload: { chatId: number; text: string; signalId: string }): string {
+function clientSign(payload: { chatId: number; text: string; signalId: string; ts: number }): string {
   return crypto
     .createHmac('sha256', SECRET)
     .update(JSON.stringify(payload))
@@ -160,6 +160,7 @@ async function caseValidHmac() {
     chatId: 12345,
     text: '🔥 CALL NOW OF THE DAY — AGENT CONSENSUS\n@transmute_signals (@vince)\n$DARKSOL at $98K',
     signalId: '11111111-2222-3333-4444-555555555555',
+    ts: Date.now(),
   };
   const body = { ...payload, hmac: clientSign(payload) };
   const res = makeRes();
@@ -192,7 +193,7 @@ async function caseValidHmac() {
 async function caseTamperedHmac() {
   console.log('\n[2] tampered HMAC → 401');
   sendCalls.length = 0;
-  const payload = { chatId: 1, text: 'x', signalId: 'sig' };
+  const payload = { chatId: 1, text: 'x', signalId: 'sig', ts: Date.now() };
   const real = clientSign(payload);
   // Flip one hex char.
   const tampered = real.slice(0, -1) + (real.endsWith('0') ? '1' : '0');
@@ -249,7 +250,7 @@ async function caseMissingEnv() {
   delete process.env.ARENA_BOT_INTERNAL_SECRET;
   // Re-require fresh module so it picks up the cleared env on import path.
   // The handler reads env at request time, so just calling it suffices.
-  const payload = { chatId: 1, text: 'x', signalId: 'sig' };
+  const payload = { chatId: 1, text: 'x', signalId: 'sig', ts: Date.now() };
   const body = { ...payload, hmac: 'a'.repeat(64) };
   const res = makeRes();
   await handler(
@@ -267,11 +268,11 @@ async function caseMissingEnv() {
 
 async function caseLengthInvariants() {
   console.log('\n[6] HMAC determinism + length invariants');
-  const a = clientSign({ chatId: 1, text: 'hello', signalId: 'abc' });
-  const b = clientSign({ chatId: 1, text: 'hello', signalId: 'abc' });
+  const a = clientSign({ chatId: 1, text: 'hello', signalId: 'abc', ts: 1000 });
+  const b = clientSign({ chatId: 1, text: 'hello', signalId: 'abc', ts: 1000 });
   check('sign() is deterministic', a === b);
   check('sign() returns 64 hex chars', /^[0-9a-f]{64}$/.test(a));
-  const c = clientSign({ chatId: 2, text: 'hello', signalId: 'abc' });
+  const c = clientSign({ chatId: 2, text: 'hello', signalId: 'abc', ts: 1000 });
   check('different chatId → different sig', a !== c);
 }
 

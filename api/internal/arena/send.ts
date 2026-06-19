@@ -76,6 +76,7 @@ interface InboundPayload {
   chatId: number;
   text: string;
   signalId: string;
+  ts: number;
   hmac: string;
 }
 
@@ -92,6 +93,9 @@ function isInboundPayload(b: unknown): b is InboundPayload {
     typeof p.signalId === 'string' &&
     p.signalId.length > 0 &&
     p.signalId.length <= MAX_SIGNAL_ID_LENGTH &&
+    typeof p.ts === 'number' &&
+    Number.isFinite(p.ts) &&
+    Number.isInteger(p.ts) &&
     typeof p.hmac === 'string' &&
     /^[0-9a-f]{64}$/.test(p.hmac)
   );
@@ -112,6 +116,7 @@ function verifyHmac(payload: InboundPayload): boolean {
         chatId: payload.chatId,
         text: payload.text,
         signalId: payload.signalId,
+        ts: payload.ts,
       }),
     )
     .digest();
@@ -186,6 +191,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!verifyHmac(body)) {
     return res.status(401).json({ error: 'invalid_signature' });
+  }
+
+  // M7 (CWE-294): reject replays. The ts is inside the signed payload, so an
+  // attacker can't backdate it without invalidating the HMAC. 120s window
+  // tolerates clock skew + the nous-app fan-out throttle (ts is stamped per
+  // message at send time, and retries re-stamp).
+  const REPLAY_SKEW_MS = 120_000;
+  if (Math.abs(Date.now() - body.ts) > REPLAY_SKEW_MS) {
+    return res.status(401).json({ error: 'stale_request' });
   }
 
   const bot = getBot();
