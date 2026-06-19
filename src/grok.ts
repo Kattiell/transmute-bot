@@ -81,6 +81,7 @@ async function callGrok(prompt: string): Promise<string> {
         venice_parameters: {
           enable_web_search: 'on',
           enable_x_search: true,
+          enable_web_scraping: true,
           enable_web_citations: true,
           // Reasoning stays ON, but strip the model's <think> blocks from the
           // response so the parser only sees the final structured output.
