@@ -11,6 +11,7 @@
  */
 
 const DEX_API = 'https://api.dexscreener.com/latest/dex/tokens';
+const DEX_SEARCH_API = 'https://api.dexscreener.com/latest/dex/search';
 const FETCH_TIMEOUT_MS = 8000;
 
 export interface DexPair {
@@ -108,6 +109,32 @@ export async function fetchDexScreenerSnapshot(
       console.warn('[dexscreener] fetch failed', err);
     }
     return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Search DexScreener by free text (symbol / name) and return Base pairs only.
+ * The deterministic token resolver uses this to find candidate CAs by symbol —
+ * every returned address comes from the API payload, NEVER from model text (I1).
+ * Returns [] on any error/timeout (fail-closed: no candidate → resolver abstains).
+ */
+export async function searchDexScreener(query: string): Promise<DexPair[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${DEX_SEARCH_API}?q=${encodeURIComponent(q)}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { pairs?: DexPair[] | null };
+    return (data.pairs ?? []).filter((p) => p.chainId === 'base');
+  } catch {
+    return [];
   } finally {
     clearTimeout(timer);
   }

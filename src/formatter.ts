@@ -1,4 +1,6 @@
 import type { ParsedProject } from './types';
+import type { HardenedProject } from './oracle-harden';
+import type { TokenRef } from './token-resolver';
 import { extractField, extractConviction } from './parser';
 
 /** Escape HTML special chars */
@@ -66,10 +68,38 @@ function convictionEmoji(conviction: string): string {
   return '💤';
 }
 
-export function formatProjectCard(project: ParsedProject): string {
+/** Contract block driven by the deterministic resolver — never the model's text. */
+function contractSection(r: TokenRef): string {
+  const addr = r.address.toLowerCase();
+  const links = (a: string) =>
+    `📈 <a href="https://dexscreener.com/base/${esc(a)}">DexScreener</a> · 🔍 <a href="https://basescan.org/token/${esc(a)}">Basescan</a>`;
+  if (r.status === 'confirmed') {
+    return [
+      `✅ <b>CONTRACT — verified</b>`,
+      `<code>${esc(addr)}</code>`,
+      links(addr),
+      '',
+    ].join('\n');
+  }
+  if (r.status === 'low_confidence') {
+    return [
+      `⚠️ <b>CONTRACT — unconfirmed</b>`,
+      `<code>${esc(addr)}</code>`,
+      `<i>${esc(r.reason ?? 'Verify the contract yourself before buying.')}</i>`,
+      links(addr),
+      '',
+    ].join('\n');
+  }
+  // abstained — NEVER show an address we couldn't confirm.
+  return [
+    `⛔ <b>CONTRACT — not confirmed</b>`,
+    `<i>${esc(r.reason ?? 'Could not confirm against an official X profile.')}</i>`,
+    '',
+  ].join('\n');
+}
+
+export function formatProjectCard(project: HardenedProject): string {
   const conviction = extractConviction(project.fullText);
-  const ca = extractField(project.fullText, 'contract address \\(ca\\)') || extractField(project.fullText, 'contract address') || extractField(project.fullText, 'CA');
-  const dexLink = extractField(project.fullText, 'dexscreener link') || extractField(project.fullText, 'dexscreener');
   const projectX = extractField(project.fullText, 'project x') || extractField(project.fullText, 'project x \\(@\\)');
   const creatorX = extractField(project.fullText, 'creator x') || extractField(project.fullText, 'creator x \\(@\\)');
   const fdv = extractField(project.fullText, 'FDV \\(USD\\)') || extractField(project.fullText, 'FDV');
@@ -121,20 +151,23 @@ export function formatProjectCard(project: ParsedProject): string {
     msg += `⚠️ <b>RISKS</b>\n${escAndFormat(risks)}\n\n`;
   }
 
-  // Links
-  const links: string[] = [];
-  if (ca) links.push(`📋 <code>${esc(ca)}</code>`);
-  if (dexLink) links.push(`📈 <a href="${esc(dexLink)}">DexScreener</a>`);
+  // Contract — driven by the deterministic resolver (tool-sourced CA or an
+  // explicit "not confirmed"); NEVER the address from the model's text (I1).
+  msg += contractSection(project.resolution);
+
+  // Official X links (informational — these are what the resolver matched the
+  // contract against; they are social links, not the token identity).
+  const xLinks: string[] = [];
   if (projectX) {
     const handle = projectX.replace(/^@/, '');
-    links.push(`🐦 <a href="https://x.com/${esc(handle)}">@${esc(handle)}</a>`);
+    xLinks.push(`🐦 <a href="https://x.com/${esc(handle)}">@${esc(handle)}</a>`);
   }
   if (creatorX) {
     const handle = creatorX.replace(/^@/, '');
-    links.push(`👤 <a href="https://x.com/${esc(handle)}">@${esc(handle)}</a>`);
+    xLinks.push(`👤 <a href="https://x.com/${esc(handle)}">@${esc(handle)}</a>`);
   }
-  if (links.length > 0) {
-    msg += `🔗 <b>LINKS</b>\n` + links.join('\n') + '\n\n';
+  if (xLinks.length > 0) {
+    msg += `🔗 <b>LINKS</b>\n` + xLinks.join('\n') + '\n\n';
   }
 
   // Teaching
@@ -145,7 +178,7 @@ export function formatProjectCard(project: ParsedProject): string {
   return msg.trim();
 }
 
-export function formatWhispersReport(projects: ParsedProject[]): string[] {
+export function formatWhispersReport(projects: HardenedProject[]): string[] {
   const messages: string[] = [];
 
   let header = '𓂀 <b>TRANSMUTE ORACLE</b>\n';

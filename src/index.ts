@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Telegraf } from 'telegraf';
 import { invokeOracle, invokeOracleWithPrompt } from './grok';
 import { parseOracleOutput } from './parser';
+import { hardenProjects } from './oracle-harden';
 import { formatWhispersReport, formatGenericReport } from './formatter';
 import { PULSE_PROMPT, MYTHS_PROMPT, PEARLS_PROMPT } from './prompts';
 
@@ -79,7 +80,10 @@ bot.command('invoke', async (ctx) => {
       return;
     }
 
-    const messages = formatWhispersReport(projects);
+    // Harden: tool-resolve each CA (or abstain) before formatting — a model-
+    // generated address is never sent to users (I1).
+    const hardened = await hardenProjects(projects);
+    const messages = formatWhispersReport(hardened);
     await sendMessages(ctx.chat.id, messages);
   } catch (err) {
     console.error('[invoke] Error:', err);
