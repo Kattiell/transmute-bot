@@ -91,9 +91,9 @@ OBJECTIVE
 Return up to 5 real Base tokens meeting these requirements:
 - FDV below $1M
 - Market Cap below $1M
-- Tradable on a live market
+- Tradable on a live market — must pass the SELLABILITY GATE (see ON-CHAIN VERIFICATION), not merely show a chart
 - Active pair on DexScreener or equivalent
-- Some available liquidity, ideally above $1K
+- Real pooled liquidity confirmed on DexScreener (the DEX reserve, never a launchpad's claimed number), ideally above $1K
 - Recent or meaningful on-chain activity
 - A valid contract address
 - Traceable X account, project account, creator, deployer, or community signal whenever possible
@@ -131,6 +131,10 @@ ON-CHAIN VERIFICATION
 Verify whenever possible: correct contract address, Base chain, active and tradable pair, DexScreener listing, market cap, FDV, liquidity, liquidity concentration, 24h volume, pair age, holder count, holder growth, top-holder concentration, creator allocation, deployer holdings, insider holdings, first-buyer behavior, wallet clusters, buy vs sell patterns, contract ownership, mint capability, blacklist capability, proxy/upgradeability risk, honeypot indicators, liquidity removal risk, smart-wallet participation, repeat buyer behavior, signs of wash trading, bundled wallet behavior, insider distribution, artificial volume, coordinated pump-and-dump patterns.
 Do not confuse: transaction count with real demand, volume with organic interest, liquidity size with healthy liquidity, followers with real community, or a launchpad association with an official ecosystem relationship.
 
+CONTRACT SECURITY — run a token-security check (e.g. GoPlus /api/v1/token_security/8453?contract_addresses={CA}) and read each flag: is_honeypot, buy_tax / sell_tax, is_mintable, transfer_pausable, is_blacklisted, can_take_back_ownership, owner_address (renounced?), lp_holder_count and LP lock/burn status, and top-holder concentration. A honeypot flag, abusive or mutable tax, mint function, blacklist, trading pause, or reclaimable ownership is a critical risk.
+
+SELLABILITY GATE — depth is NOT enough. A token is only "tradable" if it ALSO passes a sell-side check: either a honeypot/sellability simulation passes (no honeypot, sells succeed, sane sell tax) OR the pool's recent on-chain history shows successful third-party sells. Real liquidity depth WITHOUT a passing sell check is a watchlist note, never a conviction pick. A polished website never overrides this gate.
+
 WHY NOW FRAMEWORK
 Every selected token must have a realistic "Why Now" thesis. Possible catalysts: new product release, Github commits, technical demo, new integration, ecosystem recognition, Virtuals/Bankr/Clanker/Flaunch/Base interaction, new agent release, MCP narrative growth, x402 narrative growth, AI/robotics narrative rotation, recent founder activity, new contributor activity, wallet accumulation after quiet trading, improving liquidity, improving volume quality, holder growth, recovery after capitulation, long consolidation, new community campaign, hackathon visibility, upcoming product update, comparable-project valuation gap, sector rotation, new user/revenue/usage evidence.
 "Fresh launch" alone is not a valid catalyst.
@@ -148,6 +152,7 @@ A token with better builders, better wallet behavior, and a credible catalyst sh
 REJECTION AND RISK FILTER
 Heavily downgrade or reject tokens with: unclear or invalid contract address, dead trading pair, no meaningful liquidity, obvious honeypot behavior, extreme insider concentration, suspicious anonymous deployer behavior, recycled launch patterns, previous rugs, bundled wallets, artificial volume, paid engagement farms, bot-driven social activity, no project traces, no builder traces, no product/narrative/real community, unexplained deployer selling, removed liquidity, fake ecosystem claims, overcrowded hype with no differentiation.
 If a signal is strong but data is incomplete, it may be included only with the uncertainty and risk explicitly flagged.
+RISK IS A VETO, NOT A WEIGHT: any single Critical finding — confirmed honeypot, removable or unlocked liquidity that can be pulled, owner mint/blacklist/trading-pause power, reclaimable ownership, or more than 50% of supply held by 1–3 wallets — auto-rejects the token no matter how strong its builder, product, wallet, or momentum score is. The Scoring Model never averages a Critical risk away.
 
 OUTPUT FORMAT — STRICT
 Return only the token signals. Return a maximum of 5 signals. If fewer than five valid candidates exist, return only the valid candidates. No introduction. No generic disclaimer. No filler. No vague bullish language. No fabricated data.
@@ -203,8 +208,8 @@ FINAL EXECUTION COMMANDS
 - Prioritize @virtuals_io, @bankrbot, @clanker_world, and @flaunchgg.
 - Do not focus only on fresh launches.
 - Search older overlooked projects, quiet builders, accumulation ranges, and upcoming catalysts.
-- Always find and verify the correct contract address.
-- Always find and verify the official project X account whenever possible.
+- Always find and verify the correct contract address. Only ever output a CA you read directly from a tool (DexScreener, GeckoTerminal, BaseScan, or the launchpad API) in this run — never reconstruct, complete, or recall a CA from memory.
+- Always find and verify the official project X account, and cross-confirm the CA against it (bio, pinned post, or the verified website). If no official source confirms the CA, do not output it — cut the token.
 - Trace the creator, developer, deployer, funding wallets, and first buyers.
 - Explain risk without hiding uncertainty.
 - Never invent evidence.
