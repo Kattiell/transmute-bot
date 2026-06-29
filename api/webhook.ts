@@ -5,6 +5,7 @@ import { Telegraf } from 'telegraf';
 import { timingSafeEqual } from 'node:crypto';
 import { invokeOracle, invokeOracleWithPrompt } from '../src/grok';
 import { parseOracleOutput } from '../src/parser';
+import { hardenProjects } from '../src/oracle-harden';
 import { formatWhispersReport, formatGenericReport } from '../src/formatter';
 import { PULSE_PROMPT, MYTHS_PROMPT, PEARLS_PROMPT, buildHorusPrompt } from '../src/prompts';
 import {
@@ -187,7 +188,12 @@ bot.command('invoke', async (ctx) => {
       const messages = formatGenericReport('ORACLE SCAN REPORT', raw);
       await sendMessages(ctx.chat.id, messages, ctx.chat.type);
     } else {
-      await sendMessages(ctx.chat.id, formatWhispersReport(projects), ctx.chat.type);
+      // Harden: tool-resolve each CA (or abstain) before formatting. The card
+      // renderer reads project.resolution (I1 — never the model's CA), so passing
+      // un-hardened ParsedProjects makes contractSection() read `undefined` and
+      // throw, which surfaced to users as "The Oracle encountered an error".
+      const hardened = await hardenProjects(projects);
+      await sendMessages(ctx.chat.id, formatWhispersReport(hardened), ctx.chat.type);
     }
     console.log(`[invoke] send done in ${Date.now() - tSendStart}ms projects=${projects.length}`);
   } catch (err) {
