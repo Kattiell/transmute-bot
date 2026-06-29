@@ -15,7 +15,7 @@ import { validateSecurity } from './security';
 import { decide } from './decide';
 import { sameAddress } from './address';
 import { extractIntent } from './intent';
-import { geckoTerminalHasToken, coinGeckoContract } from './sources';
+import { geckoTerminalHasToken, coinGeckoContract, baseScanContractInfo } from './sources';
 import type { ParsedProject } from '../types';
 
 export type { TokenRef, GrokIntent, SecurityFlag } from './types';
@@ -67,11 +67,18 @@ export async function resolveTokenForIntent(intent: GrokIntent, config: Resolver
   const top = ranked[0];
 
   // Enrich the leading candidate with independent cross-sources (bounded cost).
-  const [gtExists, cg] = await Promise.all([
+  // BaseScan validates existence + verified source + holders (the system-wide
+  // "DexScreener → BaseScan" CA discipline); GeckoTerminal/CoinGecko add further
+  // independent confirmation of the SAME (chainId, address).
+  const [gtExists, cg, bs] = await Promise.all([
     geckoTerminalHasToken(top.address),
     coinGeckoContract(top.address),
+    baseScanContractInfo(top.address),
   ]);
   if (gtExists && !top.sources.includes('geckoterminal')) top.sources.push('geckoterminal');
+  if (bs.exists && !top.sources.includes('basescan')) top.sources.push('basescan');
+  if (bs.verified) top.verifiedContract = true;
+  if (bs.holders !== null) top.holders = bs.holders;
   if (cg.curated) {
     top.curated = true;
     if (!top.sources.includes('coingecko')) top.sources.push('coingecko');

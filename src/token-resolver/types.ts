@@ -61,6 +61,8 @@ export interface Candidate {
   socialsMatched: boolean;
   /** Present in a curated list (CoinGecko verified / etc.). */
   curated: boolean;
+  /** Source code is publicly verified on BaseScan. Raises confidence (not a gate). */
+  verifiedContract?: boolean;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
   ageHours: number | null;
@@ -75,6 +77,10 @@ export interface TokenRef {
   name?: string;
   sources: string[];
   socialsMatched: boolean;
+  /** Source code verified on BaseScan (when checked). */
+  verifiedContract?: boolean;
+  /** Holder count from BaseScan when available, else null. */
+  holders?: number | null;
   confidence: number; // 0..1
   flags: SecurityFlag[];
   status: 'confirmed' | 'low_confidence' | 'abstained';

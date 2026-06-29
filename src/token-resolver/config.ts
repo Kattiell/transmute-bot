@@ -19,8 +19,9 @@ export interface ResolverConfig {
   /** Confidence weights (summed, then clamped to [0,1]). */
   weights: {
     xMatch: number; // narrative X handle == DEX X handle (strongest)
-    crossSource: number; // CA present in >= 2 independent sources
+    crossSource: number; // CA present in >= 2 independent sources (DexScreener + GeckoTerminal/CoinGecko/BaseScan)
     curated: number; // present in a curated list (CoinGecko verified)
+    verifiedContract: number; // source code verified on BaseScan
     healthyMarket: number; // liquidity + age + holders look healthy (weak; wash-tradeable)
   };
 
@@ -41,6 +42,7 @@ export const DEFAULT_CONFIG: ResolverConfig = {
     xMatch: 0.6,
     crossSource: 0.3,
     curated: 0.2,
+    verifiedContract: 0.1,
     healthyMarket: 0.1,
   },
   minLiquidityUsd: 10_000,

@@ -25,8 +25,19 @@ function extractTicker(raw: string): string {
 function extractName(raw: string): string {
   const text = stripBold(raw);
 
-  // Accepts both "Name:" (legacy) and "Token Name:" (Primordial Alpha Hunter v2)
-  const nameOnly = text.match(/^[\s]*(?:token\s+)?name\s*[:=]\s*([^\n($]+)/im);
+  // New "𓂀 Signal #N — Project Name / $TICKER" header (the "𓂀 Signal" marker
+  // is consumed by the split, so the section begins "#N — Name / $TICKER").
+  // Anchored at the absolute start and restricted to an em/en dash so legacy
+  // bullet lines ("- builder / dev") can never false-match.
+  const headerName = text.match(/^\s*#?\s*\d*\s*[—–]\s*([^\n/]+?)\s*\/\s*\$?[A-Za-z]/);
+  if (headerName) {
+    const name = headerName[1].replace(/\$[A-Z0-9]+/gi, '').trim();
+    if (name.length > 1 && name.length < 80) return name;
+  }
+
+  // Accepts "Name:" (legacy), "Token Name:" (Primordial Alpha Hunter v2) and
+  // "Project:" (Arena format).
+  const nameOnly = text.match(/^[\s]*(?:token\s+name|name|project)\s*[:=]\s*([^\n($]+)/im);
   if (nameOnly) {
     const name = nameOnly[1].replace(/\$[A-Z0-9]+/gi, '').trim();
     if (name.length > 0 && name.length < 80) return name;
@@ -103,7 +114,8 @@ function extractRisk(raw: string): number | null {
 
 function extractProbability(raw: string): string {
   const text = stripBold(raw);
-  const match = text.match(/10x\s*probability\s*[^:\n]*[:=]\s*(\d{1,3}\s*%)/i);
+  // Accepts "10x Probability" and the new "10x Scenario Probability".
+  const match = text.match(/10x\s*(?:scenario\s*)?probability\s*[^:\n]*[:=]\s*(\d{1,3}\s*%)/i);
   return match ? match[1].trim() : '';
 }
 

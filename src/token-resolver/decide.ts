@@ -30,6 +30,7 @@ export function decide(candidate: Candidate, securityFlags: SecurityFlag[], conf
   if (candidate.socialsMatched) confidence += w.xMatch;
   if (candidate.sources.length >= 2) confidence += w.crossSource;
   if (candidate.curated) confidence += w.curated;
+  if (candidate.verifiedContract) confidence += w.verifiedContract;
   const healthy = (candidate.liquidityUsd ?? 0) >= config.minLiquidityUsd && (candidate.ageHours ?? 0) >= config.youngPoolHours;
   if (healthy) confidence += w.healthyMarket;
   if (opts?.modelCaMatchesChosen) confidence += 0.05; // tool & model agree — minor bonus
@@ -43,6 +44,8 @@ export function decide(candidate: Candidate, securityFlags: SecurityFlag[], conf
     name: candidate.name,
     sources: candidate.sources,
     socialsMatched: candidate.socialsMatched,
+    verifiedContract: candidate.verifiedContract ?? false,
+    holders: candidate.holders ?? null,
     confidence,
     flags: [...flags],
   };

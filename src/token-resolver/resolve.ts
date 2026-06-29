@@ -92,6 +92,7 @@ export async function resolveCandidates(intent: GrokIntent): Promise<Candidate[]
       dexDomains: domains,
       socialsMatched: matched,
       curated: false,
+      verifiedContract: false,
       liquidityUsd: liq,
       volume24hUsd: vol,
       ageHours,
