@@ -10,6 +10,8 @@ export interface ChainInfo {
   key: string;
   /** chainId exactly as DexScreener reports it in pair payloads. */
   dexChainId: string;
+  /** Network id on GeckoTerminal — fallback source for DEXes DexScreener doesn't index. */
+  geckoNetworkId: string;
   /** Display name on cards. */
   label: string;
   /** Icon rendered before the label. */
@@ -26,6 +28,7 @@ export interface ChainInfo {
 export const BASE_CHAIN: ChainInfo = {
   key: 'base',
   dexChainId: 'base',
+  geckoNetworkId: 'base',
   label: 'Base',
   emoji: '🔵',
   explorerName: 'Basescan',
@@ -36,6 +39,7 @@ export const BASE_CHAIN: ChainInfo = {
 export const ROBINHOOD_CHAIN: ChainInfo = {
   key: 'robinhood',
   dexChainId: 'robinhood',
+  geckoNetworkId: 'robinhood',
   label: 'Robinhood',
   emoji: '🪶',
   explorerName: 'Blockscout',
@@ -43,7 +47,15 @@ export const ROBINHOOD_CHAIN: ChainInfo = {
   refreshTag: 'rh',
 };
 
+/** Networks the CA pipelines cover, in resolution priority order. */
+export const SUPPORTED_CHAINS: ChainInfo[] = [BASE_CHAIN, ROBINHOOD_CHAIN];
+
 /** Resolve the chain baked into a refresh callback tag; absent/unknown → Base. */
 export function chainByRefreshTag(tag: string | undefined): ChainInfo {
   return tag === ROBINHOOD_CHAIN.refreshTag ? ROBINHOOD_CHAIN : BASE_CHAIN;
+}
+
+/** Resolve a token_calls.chain value; unknown/legacy rows → Base. */
+export function chainByKey(key: string | null | undefined): ChainInfo {
+  return key === ROBINHOOD_CHAIN.key ? ROBINHOOD_CHAIN : BASE_CHAIN;
 }

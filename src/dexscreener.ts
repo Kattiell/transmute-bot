@@ -48,6 +48,8 @@ export interface DexSnapshot {
   pairAgeDays: number | null;
   websites: string[];
   socials: { type: string; url: string }[];
+  /** Data source label for links ("DexScreener" when absent). */
+  sourceName?: string;
 }
 
 const CA_REGEX = /^0x[a-fA-F0-9]{40}$/;
@@ -177,7 +179,7 @@ export function snapshotToPromptBlock(snap: DexSnapshot): string {
     `Ticker: $${snap.symbol}`,
     `Contract: ${snap.address}`,
     `Chain: ${snap.chain}`,
-    `DexScreener: ${snap.url}`,
+    `${snap.sourceName ?? 'DexScreener'}: ${snap.url}`,
     `Price USD: ${snap.priceUsd ?? 'unknown'}`,
     `FDV: ${fmtUsd(snap.fdvUsd)}`,
     `MCap: ${fmtUsd(snap.mcapUsd)}`,

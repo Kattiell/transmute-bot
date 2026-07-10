@@ -25,6 +25,8 @@ import {
   touchTokenCallPollByCa,
 } from '../src/oracle/tokencalls';
 import { fetchDexScreenerSnapshot } from '../src/dexscreener';
+import { fetchTokenSnapshot } from '../src/tokensnapshot';
+import { chainByKey } from '../src/chains';
 
 const MAX_AGE_DAYS = 30;
 // Two poll pools share the run: Pantheon calls + group-detected token calls.
@@ -88,12 +90,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tokenDeactivated = await deactivateTokenCallsOlderThan(MAX_AGE_DAYS);
     const tokenCalls = await listTokenCallsToPoll(MAX_AGE_DAYS, TOKEN_POLL_BATCH);
     const uniqueCas = [...new Set(tokenCalls.map((c) => c.contract_address))];
+    // Poll each CA on the network it was called on — robinhood rows go through
+    // the GeckoTerminal fallback when DexScreener doesn't index the pool.
+    const chainKeyByCa = new Map<string, string>();
+    for (const c of tokenCalls) {
+      if (!chainKeyByCa.has(c.contract_address)) chainKeyByCa.set(c.contract_address, c.chain);
+    }
     let tokenPolled = 0;
     let tokenAthsUpdated = 0;
 
     for (const ca of uniqueCas) {
       tokenPolled += 1;
-      const snap = await fetchDexScreenerSnapshot(ca);
+      const snap = await fetchTokenSnapshot(ca, [chainByKey(chainKeyByCa.get(ca))])
+        .then((r) => r?.snapshot ?? null)
+        .catch(() => null);
       if (snap?.fdvUsd != null) {
         const hasNewHigh = tokenCalls.some(
           (c) => c.contract_address === ca && snap.fdvUsd! > (c.ath_fdv ?? 0),

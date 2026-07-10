@@ -86,7 +86,7 @@ export function formatCaCard(opts: {
 
   const lines = [
     `▣ <b>${esc(ticker)}</b> — <i>${esc(snap.name || 'Unknown')}</i>`,
-    `${chain.emoji} ${esc(chain.label)} · 📈 <a href="${esc(snap.url)}">DexScreener</a> · 🔍 <a href="${esc(chain.explorerTokenUrl(snap.address.toLowerCase()))}">${esc(chain.explorerName)}</a>`,
+    `${chain.emoji} ${esc(chain.label)} · 📈 <a href="${esc(snap.url)}">${esc(snap.sourceName ?? 'DexScreener')}</a> · 🔍 <a href="${esc(chain.explorerTokenUrl(snap.address.toLowerCase()))}">${esc(chain.explorerName)}</a>`,
     `<code>${esc(snap.address.toLowerCase())}</code>`,
     '',
     `💰 FDV: <b>${fmtUsdCompact(snap.fdvUsd)}</b>`,

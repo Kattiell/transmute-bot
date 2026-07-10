@@ -32,7 +32,15 @@ import {
   isValidEvmAddress,
   snapshotToPromptBlock,
 } from '../src/dexscreener';
-import { BASE_CHAIN, ROBINHOOD_CHAIN, chainByRefreshTag, type ChainInfo } from '../src/chains';
+import {
+  BASE_CHAIN,
+  ROBINHOOD_CHAIN,
+  SUPPORTED_CHAINS,
+  chainByKey,
+  chainByRefreshTag,
+  type ChainInfo,
+} from '../src/chains';
+import { fetchTokenSnapshot } from '../src/tokensnapshot';
 import {
   addGroupSubscription,
   clearPendingCall,
@@ -339,13 +347,10 @@ async function runOracleRevelation(ctx: Context, ca: string): Promise<void> {
   // resolved against Base first, then Robinhood — the analysis is framed for
   // whichever network actually holds the pair.
   const tStart = Date.now();
-  const snapshot = await fetchDexScreenerSnapshot(normalizedCa, [
-    BASE_CHAIN.dexChainId,
-    ROBINHOOD_CHAIN.dexChainId,
-  ]);
+  const resolved = await fetchTokenSnapshot(normalizedCa, SUPPORTED_CHAINS);
+  const snapshot = resolved?.snapshot ?? null;
   const dexBlock = snapshot ? snapshotToPromptBlock(snapshot) : null;
-  const oracleChain =
-    snapshot?.chain === ROBINHOOD_CHAIN.dexChainId ? ROBINHOOD_CHAIN : BASE_CHAIN;
+  const oracleChain = resolved?.chain ?? BASE_CHAIN;
   console.log(
     `[oracle] dex snapshot ${snapshot ? `ok (${oracleChain.key})` : 'missing'} in ${Date.now() - tStart}ms`,
   );
@@ -354,7 +359,7 @@ async function runOracleRevelation(ctx: Context, ca: string): Promise<void> {
     // Token might be too new or on an uncovered network — warn the seeker but
     // still let Grok try.
     await ctx.reply(
-      '⚠️ <i>DexScreener returned no Base or Robinhood pair for this CA. Horus will analyze with thin data — the verdict may flag higher risk.</i>',
+      '⚠️ <i>Neither DexScreener nor GeckoTerminal returned a Base or Robinhood pair for this CA. Horus will analyze with thin data — the verdict may flag higher risk.</i>',
       { parse_mode: 'HTML' },
     );
   }
@@ -690,7 +695,9 @@ bot.command('flex', async (ctx) => {
 
   // Fresh snapshot for the live FDV; opportunistically raise the stored peak
   // so the card never understates the multiplier between cron runs.
-  const snap = await fetchDexScreenerSnapshot(call.contract_address).catch(() => null);
+  const snap = await fetchTokenSnapshot(call.contract_address, [chainByKey(call.chain)])
+    .then((r) => r?.snapshot ?? null)
+    .catch(() => null);
   const currentFdv = snap?.fdvUsd ?? null;
   if (currentFdv !== null && currentFdv > (call.ath_fdv ?? 0)) {
     await raiseTokenCallAthByCa({
@@ -1041,7 +1048,9 @@ bot.on('callback_query', async (ctx) => {
   const chatId = cq.message?.chat.id;
   let call = chatId !== undefined ? await getTokenCall(chatId, ca).catch(() => null) : null;
   if (!call) call = await getEarliestTokenCall(ca).catch(() => null);
-  const snap = await fetchDexScreenerSnapshot(ca, chain.dexChainId).catch(() => null);
+  const snap = await fetchTokenSnapshot(ca, [chain])
+    .then((r) => r?.snapshot ?? null)
+    .catch(() => null);
   if (!call || !snap) {
     await ctx.answerCbQuery('⚠️ Could not fetch fresh data — try again shortly.').catch(() => undefined);
     return;
@@ -1215,11 +1224,9 @@ async function replyWithCaCard(
   // network we don't cover → no card; a group bot that answers every random
   // hex string is noise (the explicit CÁ command surfaces this outcome to
   // the user, the auto-detector stays silent).
-  const snap = await fetchDexScreenerSnapshot(
-    ca,
-    allowedChains.map((c) => c.dexChainId),
-  );
-  const chain = snap ? allowedChains.find((c) => c.dexChainId === snap.chain) : undefined;
+  const resolved = await fetchTokenSnapshot(ca, allowedChains);
+  const snap = resolved?.snapshot;
+  const chain = resolved?.chain;
   if (!snap || !chain) return 'not_found';
 
   let call = existing;
@@ -1321,7 +1328,7 @@ bot.on('text', async (ctx, next) => {
     const outcome = await replyWithCaCard(ctx, match[1].toLowerCase(), ROBINHOOD_CHAIN);
     if (outcome === 'not_found') {
       await ctx.reply(
-        '👁️ No Robinhood-chain pair found for that address on DexScreener.',
+        '👁️ No Robinhood-chain pair found for that address on DexScreener or GeckoTerminal.',
         { reply_parameters: { message_id: msg.message_id } },
       );
     }
@@ -1353,7 +1360,7 @@ bot.on('text', async (ctx, next) => {
   try {
     // Bare pastes auto-detect the network: Base wins when the CA trades on
     // both; the CÁ command above forces Robinhood for those collisions.
-    await replyWithCaCard(ctx, match[1].toLowerCase(), [BASE_CHAIN, ROBINHOOD_CHAIN]);
+    await replyWithCaCard(ctx, match[1].toLowerCase(), SUPPORTED_CHAINS);
   } catch (err) {
     // The auto-card must never break group message processing.
     console.warn('[cacard] failed', err);
