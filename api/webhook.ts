@@ -1173,8 +1173,10 @@ function caCardKeyboard(ctx: Context, ca: string, chain: ChainInfo = BASE_CHAIN)
 async function replyWithCaCard(
   ctx: Context,
   ca: string,
-  chain: ChainInfo = BASE_CHAIN,
+  chains: ChainInfo | ChainInfo[] = BASE_CHAIN,
 ): Promise<'sent' | 'not_found' | 'skipped'> {
+  // Priority-ordered: the first listed chain with a live pair claims the card.
+  const allowedChains = Array.isArray(chains) ? chains : [chains];
   const chat = ctx.chat;
   const from = ctx.from;
   const msg = ctx.message;
@@ -1195,12 +1197,16 @@ async function replyWithCaCard(
   const { allowed } = await checkRateLimit(chat.id, 'cacard', 60, CA_CARDS_PER_MIN_PER_CHAT);
   if (!allowed) return 'skipped';
 
-  // Ground truth before replying. Unknown token or off-chain pair → no card;
-  // a group bot that answers every random hex string is noise (the explicit
-  // CÁ command surfaces this outcome to the user, the auto-detector stays
-  // silent).
-  const snap = await fetchDexScreenerSnapshot(ca, chain.dexChainId);
-  if (!snap || snap.chain !== chain.dexChainId) return 'not_found';
+  // Ground truth before replying. Unknown token, or its best pair sits on a
+  // network we don't cover → no card; a group bot that answers every random
+  // hex string is noise (the explicit CÁ command surfaces this outcome to
+  // the user, the auto-detector stays silent).
+  const snap = await fetchDexScreenerSnapshot(
+    ca,
+    allowedChains.map((c) => c.dexChainId),
+  );
+  const chain = snap ? allowedChains.find((c) => c.dexChainId === snap.chain) : undefined;
+  if (!snap || !chain) return 'not_found';
 
   let call = existing;
   let isNew = false;
@@ -1331,7 +1337,9 @@ bot.on('text', async (ctx, next) => {
   if (!match) return next();
 
   try {
-    await replyWithCaCard(ctx, match[1].toLowerCase());
+    // Bare pastes auto-detect the network: Base wins when the CA trades on
+    // both; the CÁ command above forces Robinhood for those collisions.
+    await replyWithCaCard(ctx, match[1].toLowerCase(), [BASE_CHAIN, ROBINHOOD_CHAIN]);
   } catch (err) {
     // The auto-card must never break group message processing.
     console.warn('[cacard] failed', err);

@@ -4,8 +4,9 @@
  * DexScreener public API: https://docs.dexscreener.com/api/reference
  * - Free, no auth, ~60 req/min per IP.
  * - GET /latest/dex/tokens/{address} returns every pair the token trades in,
- *   across every chain. We pick the highest-liquidity pair on the preferred
- *   chain (Base by default), falling back to any chain when it has none.
+ *   across every chain. We pick the highest-liquidity pair on the first
+ *   preferred chain that has one (Base by default), falling back to any
+ *   chain when none of the preferred chains match.
  *
  * If the request fails or the token isn't found we return null so callers
  * can fall back to letting Grok search itself.
@@ -57,7 +58,7 @@ export function isValidEvmAddress(addr: string): boolean {
 
 export async function fetchDexScreenerSnapshot(
   contractAddress: string,
-  preferredChainId: string = 'base',
+  preferredChainIds: string | string[] = 'base',
 ): Promise<DexSnapshot | null> {
   if (!isValidEvmAddress(contractAddress)) return null;
 
@@ -77,8 +78,16 @@ export async function fetchDexScreenerSnapshot(
     const pairs = data.pairs ?? [];
     if (pairs.length === 0) return null;
 
-    const preferredPairs = pairs.filter((p) => p.chainId === preferredChainId);
-    const candidates = preferredPairs.length > 0 ? preferredPairs : pairs;
+    // First preferred chain with a live pair wins; none of them → any chain.
+    const prefs = Array.isArray(preferredChainIds) ? preferredChainIds : [preferredChainIds];
+    let candidates = pairs;
+    for (const chainId of prefs) {
+      const onChain = pairs.filter((p) => p.chainId === chainId);
+      if (onChain.length > 0) {
+        candidates = onChain;
+        break;
+      }
+    }
     const best = candidates.reduce((acc, cur) => {
       const accLiq = acc.liquidity?.usd ?? 0;
       const curLiq = cur.liquidity?.usd ?? 0;
