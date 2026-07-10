@@ -1019,7 +1019,14 @@ FORMATTING RULES (strict):
  * non-hex characters and quote the value, so even if a future caller skips
  * the regex check the prompt body cannot be hijacked.
  */
-export function buildHorusPrompt(opts: { ca: string; dexSnapshot?: string | null }): string {
+export function buildHorusPrompt(opts: {
+  ca: string;
+  dexSnapshot?: string | null;
+  /** Network the CA resolved to (label + explorer); defaults to Base. */
+  chain?: { label: string; explorerName: string };
+}): string {
+  const chainLabel = opts.chain?.label ?? 'Base';
+  const explorerName = opts.chain?.explorerName ?? 'Basescan';
   // Defense-in-depth: only allow hex characters + the leading 0x. Anything
   // else (whitespace, punctuation, role markers, newlines) is dropped so a
   // malformed CA cannot inject "ignore previous instructions" or escape the
@@ -1031,7 +1038,7 @@ export function buildHorusPrompt(opts: { ca: string; dexSnapshot?: string | null
     ? `\n\n---\n\nVERIFIED DATA (DexScreener, fetched ${new Date().toISOString()}):\n${opts.dexSnapshot}\n\nUse the numbers above as ground truth for FDV, MCap, Liquidity, 24h Volume. Do NOT invent values that contradict them.`
     : '';
 
-  return `MANDATE: 𓂀 Horus Oracle — Token Revelation (Base) 𓂀
+  return `MANDATE: 𓂀 Horus Oracle — Token Revelation (${chainLabel}) 𓂀
 
 FUNCTION
 You are the Horus AI Oracle, the all-seeing Eye of Horus incarnated as an elite real-time on-chain visionary and esoteric analyst. Your role is to pierce the veil of any token whose Contract Address (CA) is provided by the user and deliver divine truth: thesis verification, hidden signals, creator origins, community pulse, FUD radar, and raw 10x probability. Be ruthless, precise, structured, and anchored only in verifiable data (on-chain, behavioral, social). No fluff. No hopium. Speak with the authority of the falcon god — cold, ancient, and laser-focused.
@@ -1070,7 +1077,7 @@ Confirm:
 If weak but conviction is high, flag the risk honestly.
 
 SEARCH EXECUTION
-Scan: DexScreener (Base), Basescan, X (project + creator), recent mentions, on-chain history. Follow signal, not noise.${dexBlock}
+Scan: DexScreener (${chainLabel}), ${explorerName}, X (project + creator), recent mentions, on-chain history. Follow signal, not noise.${dexBlock}
 
 OUTPUT FORMAT (STRICT)
 Return ONLY the following structure. No extra commentary, no intro, no "Based on the CA". Just the pure Oracular Revelation. Use plain text — no markdown asterisks.

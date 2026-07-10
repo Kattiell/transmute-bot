@@ -335,23 +335,37 @@ async function runOracleRevelation(ctx: Context, ca: string): Promise<void> {
   );
 
   // Fetch DexScreener concurrently with the user message ack so Grok gets
-  // ground-truth FDV/liquidity numbers instead of fabricating them.
+  // ground-truth FDV/liquidity numbers instead of fabricating them. The CA is
+  // resolved against Base first, then Robinhood — the analysis is framed for
+  // whichever network actually holds the pair.
   const tStart = Date.now();
-  const snapshot = await fetchDexScreenerSnapshot(normalizedCa);
+  const snapshot = await fetchDexScreenerSnapshot(normalizedCa, [
+    BASE_CHAIN.dexChainId,
+    ROBINHOOD_CHAIN.dexChainId,
+  ]);
   const dexBlock = snapshot ? snapshotToPromptBlock(snapshot) : null;
-  console.log(`[oracle] dex snapshot ${snapshot ? 'ok' : 'missing'} in ${Date.now() - tStart}ms`);
+  const oracleChain =
+    snapshot?.chain === ROBINHOOD_CHAIN.dexChainId ? ROBINHOOD_CHAIN : BASE_CHAIN;
+  console.log(
+    `[oracle] dex snapshot ${snapshot ? `ok (${oracleChain.key})` : 'missing'} in ${Date.now() - tStart}ms`,
+  );
 
   if (!snapshot) {
-    // Token might be too new or off-Base — warn the seeker but still let Grok try.
+    // Token might be too new or on an uncovered network — warn the seeker but
+    // still let Grok try.
     await ctx.reply(
-      '⚠️ <i>DexScreener returned no Base pair for this CA. Horus will analyze with thin data — the verdict may flag higher risk.</i>',
+      '⚠️ <i>DexScreener returned no Base or Robinhood pair for this CA. Horus will analyze with thin data — the verdict may flag higher risk.</i>',
       { parse_mode: 'HTML' },
     );
   }
 
   try {
     const tGrok = Date.now();
-    const prompt = buildHorusPrompt({ ca: normalizedCa, dexSnapshot: dexBlock });
+    const prompt = buildHorusPrompt({
+      ca: normalizedCa,
+      dexSnapshot: dexBlock,
+      chain: { label: oracleChain.label, explorerName: oracleChain.explorerName },
+    });
     const raw = await invokeOracleWithPrompt(prompt);
     console.log(`[oracle] grok done in ${Date.now() - tGrok}ms`);
 
@@ -391,7 +405,7 @@ bot.command('oracle', async (ctx) => {
     console.error('[oracle] setPendingOracle failed', err);
   });
   await ctx.reply(
-    '𓂀 <b>Horus awaits the address.</b>\n\nSend the contract address (CA) of the Base token you want revealed. The Eye listens for 5 minutes.\n\n<i>Tip: paste only the address, e.g. <code>0x557E8f1cd9fB4e9dfEcA817b15B737328D90821A</code></i>',
+    '𓂀 <b>Horus awaits the address.</b>\n\nSend the contract address (CA) of the Base or Robinhood token you want revealed. The Eye listens for 5 minutes.\n\n<i>Tip: paste only the address, e.g. <code>0x557E8f1cd9fB4e9dfEcA817b15B737328D90821A</code></i>',
     { parse_mode: 'HTML' },
   );
 });
