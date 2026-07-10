@@ -32,6 +32,7 @@ import {
   isValidEvmAddress,
   snapshotToPromptBlock,
 } from '../src/dexscreener';
+import { BASE_CHAIN, ROBINHOOD_CHAIN, chainByRefreshTag, type ChainInfo } from '../src/chains';
 import {
   addGroupSubscription,
   clearPendingCall,
@@ -997,19 +998,21 @@ bot.on('callback_query', async (ctx, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CA card refresh callback (cc:rf:0x…) — re-fetch DexScreener, edit in place
+// CA card refresh callback (cc:rf:[<chain>:]0x…) — re-fetch DexScreener, edit
+// in place. Tagless data is a legacy Base card; "rh:" marks Robinhood.
 // ─────────────────────────────────────────────────────────────────────────────
 
 bot.on('callback_query', async (ctx) => {
   const cq = ctx.callbackQuery;
   if (!cq || !('data' in cq) || !cq.data) return;
   const from = ctx.from;
-  const match = cq.data.match(/^cc:rf:(0x[a-f0-9]{40})$/);
+  const match = cq.data.match(/^cc:rf:(?:([a-z]{1,4}):)?(0x[a-f0-9]{40})$/);
   if (!match || !from) {
     await ctx.answerCbQuery().catch(() => undefined);
     return;
   }
-  const ca = match[1];
+  const chain = chainByRefreshTag(match[1]);
+  const ca = match[2];
 
   // Each tap costs a DexScreener fetch + a message edit — cap per-user volume.
   const { allowed } = await checkRateLimit(from.id, 'ccrefresh', 60, 6).catch(() => ({ allowed: true }));
@@ -1024,7 +1027,7 @@ bot.on('callback_query', async (ctx) => {
   const chatId = cq.message?.chat.id;
   let call = chatId !== undefined ? await getTokenCall(chatId, ca).catch(() => null) : null;
   if (!call) call = await getEarliestTokenCall(ca).catch(() => null);
-  const snap = await fetchDexScreenerSnapshot(ca).catch(() => null);
+  const snap = await fetchDexScreenerSnapshot(ca, chain.dexChainId).catch(() => null);
   if (!call || !snap) {
     await ctx.answerCbQuery('⚠️ Could not fetch fresh data — try again shortly.').catch(() => undefined);
     return;
@@ -1041,9 +1044,9 @@ bot.on('callback_query', async (ctx) => {
   }
 
   try {
-    await ctx.editMessageText(formatCaCard({ snapshot: snap, call, isNewCall: false }), {
+    await ctx.editMessageText(formatCaCard({ snapshot: snap, call, isNewCall: false, chain }), {
       parse_mode: 'HTML',
-      reply_markup: caCardKeyboard(ctx, ca),
+      reply_markup: caCardKeyboard(ctx, ca, chain),
       // @ts-expect-error - Telegraf types may lag behind API
       disable_web_page_preview: true,
     });
@@ -1148,26 +1151,34 @@ const CA_CARDS_PER_MIN_PER_CHAT = parseInt(process.env.CA_CARDS_PER_MIN_PER_CHAT
 /**
  * Inline keyboard under every CA card. "Call Now" deep-links into the bot DM
  * and auto-starts the /callnow wizard; "Refresh" re-fetches DexScreener and
- * edits the card in place (cc:rf:<ca> stays under Telegram's 64-byte
- * callback_data cap: 6 + 42 chars).
+ * edits the card in place. The chain's refreshTag rides in the callback data
+ * so the refreshed card keeps its network — Base keeps the legacy tagless
+ * form (cc:rf:<ca>, 6 + 42 chars) so buttons on older cards still work;
+ * tagged chains (cc:rf:rh:<ca>, 9 + 42 chars) stay under Telegram's 64-byte
+ * callback_data cap.
  */
-function caCardKeyboard(ctx: Context, ca: string) {
+function caCardKeyboard(ctx: Context, ca: string, chain: ChainInfo = BASE_CHAIN) {
   const botUsername = ctx.botInfo?.username ?? 'TransmuteOracle_bot';
+  const tag = chain.refreshTag ? `${chain.refreshTag}:` : '';
   return {
     inline_keyboard: [
       [
         { text: '🚀 Call Now', url: `https://t.me/${botUsername}?start=callnow` },
-        { text: '🔄 Refresh', callback_data: `cc:rf:${ca.toLowerCase()}` },
+        { text: '🔄 Refresh', callback_data: `cc:rf:${tag}${ca.toLowerCase()}` },
       ],
     ],
   };
 }
 
-async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
+async function replyWithCaCard(
+  ctx: Context,
+  ca: string,
+  chain: ChainInfo = BASE_CHAIN,
+): Promise<'sent' | 'not_found' | 'skipped'> {
   const chat = ctx.chat;
   const from = ctx.from;
   const msg = ctx.message;
-  if (!chat || !from || !msg) return;
+  if (!chat || !from || !msg) return 'skipped';
 
   // Anti-spam layer 1: per-(chat, ca) cooldown. Re-pastes inside the window
   // are ignored silently — the group already has the card.
@@ -1176,18 +1187,20 @@ async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
     existing?.last_card_at &&
     Date.now() - new Date(existing.last_card_at).getTime() < CA_CARD_COOLDOWN_SECONDS * 1000
   ) {
-    return;
+    return 'skipped';
   }
 
   // Anti-spam layer 2: per-chat flood cap, distinct CAs included. The chat id
   // occupies the telegram_id column of the shared rate-limit bucket table.
   const { allowed } = await checkRateLimit(chat.id, 'cacard', 60, CA_CARDS_PER_MIN_PER_CHAT);
-  if (!allowed) return;
+  if (!allowed) return 'skipped';
 
-  // Ground truth before replying. Unknown token or off-Base pair → stay
-  // silent; a group bot that answers every random hex string is noise.
-  const snap = await fetchDexScreenerSnapshot(ca);
-  if (!snap || snap.chain !== 'base') return;
+  // Ground truth before replying. Unknown token or off-chain pair → no card;
+  // a group bot that answers every random hex string is noise (the explicit
+  // CÁ command surfaces this outcome to the user, the auto-detector stays
+  // silent).
+  const snap = await fetchDexScreenerSnapshot(ca, chain.dexChainId);
+  if (!snap || snap.chain !== chain.dexChainId) return 'not_found';
 
   let call = existing;
   let isNew = false;
@@ -1196,6 +1209,7 @@ async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
       chatId: chat.id,
       chatTitle: 'title' in chat ? chat.title ?? null : null,
       contractAddress: ca,
+      chain: chain.key,
       ticker: snap.symbol,
       name: snap.name,
       dexscreenerUrl: snap.url,
@@ -1206,7 +1220,7 @@ async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
       priceUsdAtCall: snap.priceUsd,
       liquidityAtCall: snap.liquidityUsd,
     });
-    if (!recorded) return;
+    if (!recorded) return 'skipped';
     call = recorded.call;
     isNew = recorded.isNew;
   }
@@ -1221,15 +1235,81 @@ async function replyWithCaCard(ctx: Context, ca: string): Promise<void> {
     call = { ...call, ath_fdv: snap.fdvUsd, ath_price_usd: snap.priceUsd };
   }
 
-  await ctx.reply(formatCaCard({ snapshot: snap, call, isNewCall: isNew }), {
+  await ctx.reply(formatCaCard({ snapshot: snap, call, isNewCall: isNew, chain }), {
     parse_mode: 'HTML',
     reply_parameters: { message_id: msg.message_id },
-    reply_markup: caCardKeyboard(ctx, ca),
+    reply_markup: caCardKeyboard(ctx, ca, chain),
     // @ts-expect-error - Telegraf types may lag behind API
     disable_web_page_preview: true,
   });
   await markTokenCallCardSent(call.id).catch(() => undefined);
+  return 'sent';
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "CÁ" command — Robinhood-chain CA card (groups and bot DMs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The word "CÁ" (accent required, any case) routes the same card pipeline to
+// the Robinhood chain: `CÁ 0x…` inline, or a bare `CÁ` replying to a message
+// that contains the address. Registered before the bare-address auto-detector
+// so `CÁ 0x…` is consumed here and never falls through to the Base card.
+bot.on('text', async (ctx, next) => {
+  const chat = ctx.chat;
+  const from = ctx.from;
+  if (!CA_AUTOCALL_ENABLED || !chat || !from) return next();
+  if (chat.type !== 'group' && chat.type !== 'supergroup' && chat.type !== 'private') {
+    return next();
+  }
+  if (from.is_bot) return;
+
+  const msg = ctx.message;
+  if (!msg || !('text' in msg)) return next();
+  // NFC so "CÁ" typed as A + combining acute still matches.
+  const text = msg.text.normalize('NFC').trim();
+  const lower = text.toLowerCase();
+  if (lower !== 'cá' && !lower.startsWith('cá ')) return next();
+
+  // Inline form first; a bare "CÁ" falls back to the replied-to message.
+  let match = text.match(CA_MENTION_REGEX);
+  if (!match && lower === 'cá') {
+    const replied = 'reply_to_message' in msg ? msg.reply_to_message : undefined;
+    const repliedText =
+      replied && 'text' in replied && replied.text
+        ? replied.text
+        : replied && 'caption' in replied && replied.caption
+          ? replied.caption
+          : '';
+    match = repliedText.match(CA_MENTION_REGEX);
+  }
+
+  try {
+    if (!match) {
+      // Explicit command with no address → usage hint, tightly capped per
+      // chat so casual "cá" chatter can't turn the bot into a spam source.
+      const { allowed } = await checkRateLimit(chat.id, 'cahint', 60, 2).catch(() => ({
+        allowed: false,
+      }));
+      if (allowed) {
+        await ctx.reply(
+          `${ROBINHOOD_CHAIN.emoji} <b>CÁ — Robinhood chain card</b>\n\nSend <code>CÁ 0xContractAddress</code>, or reply <code>CÁ</code> to a message that contains the address.`,
+          { parse_mode: 'HTML', reply_parameters: { message_id: msg.message_id } },
+        );
+      }
+      return;
+    }
+    const outcome = await replyWithCaCard(ctx, match[1].toLowerCase(), ROBINHOOD_CHAIN);
+    if (outcome === 'not_found') {
+      await ctx.reply(
+        '👁️ No Robinhood-chain pair found for that address on DexScreener.',
+        { reply_parameters: { message_id: msg.message_id } },
+      );
+    }
+  } catch (err) {
+    // Same contract as the auto-card: never break group message processing.
+    console.warn('[cacard] robinhood card failed', err);
+  }
+});
 
 bot.on('text', async (ctx, next) => {
   const chat = ctx.chat;

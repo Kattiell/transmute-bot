@@ -1,10 +1,12 @@
 /**
- * Telegram-HTML card rendered when someone posts a Base CA in a group or in
- * the bot DM (RickBurpBot-style auto-reply). All user/token-derived strings are escaped
- * before they touch HTML parse mode — token names and Telegram first names
- * are attacker-controlled input.
+ * Telegram-HTML card rendered when someone posts a CA in a group or in the
+ * bot DM (RickBurpBot-style auto-reply). Chain-agnostic: the caller passes the
+ * ChainInfo (Base by default) that sets the branding line and explorer link.
+ * All user/token-derived strings are escaped before they touch HTML parse
+ * mode — token names and Telegram first names are attacker-controlled input.
  */
 
+import { BASE_CHAIN, type ChainInfo } from '../chains';
 import type { DexSnapshot } from '../dexscreener';
 import type { TokenCall } from './tokencalls';
 
@@ -73,8 +75,9 @@ export function formatCaCard(opts: {
   snapshot: DexSnapshot;
   call: TokenCall;
   isNewCall: boolean;
+  chain?: ChainInfo;
 }): string {
-  const { snapshot: snap, call, isNewCall } = opts;
+  const { snapshot: snap, call, isNewCall, chain = BASE_CHAIN } = opts;
   const ticker = snap.symbol ? `$${snap.symbol.toUpperCase()}` : 'TOKEN';
   const handle = callerHandle(call);
   // Highest FDV seen since the call was first tracked; the field renders even
@@ -83,7 +86,7 @@ export function formatCaCard(opts: {
 
   const lines = [
     `▣ <b>${esc(ticker)}</b> — <i>${esc(snap.name || 'Unknown')}</i>`,
-    `🔵 Base · 📈 <a href="${esc(snap.url)}">DexScreener</a> · 🔍 <a href="https://basescan.org/token/${esc(snap.address.toLowerCase())}">Basescan</a>`,
+    `${chain.emoji} ${esc(chain.label)} · 📈 <a href="${esc(snap.url)}">DexScreener</a> · 🔍 <a href="${esc(chain.explorerTokenUrl(snap.address.toLowerCase()))}">${esc(chain.explorerName)}</a>`,
     `<code>${esc(snap.address.toLowerCase())}</code>`,
     '',
     `💰 FDV: <b>${fmtUsdCompact(snap.fdvUsd)}</b>`,
