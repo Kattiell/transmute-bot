@@ -185,7 +185,8 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
       `Session: <b>${GATE_CONFIG.sessionDurationDays} days</b>\n\n` +
       `🔮 /invoke — hunt hidden microcaps (max 7/day, resets at 00:00 UTC)\n` +
-      `𓂀 /oracle CA — reveal any Base token (max 5/day)\n` +
+      `🪶 /invokeRH — hunt Robinhood Chain microcaps (max 7/day)\n` +
+      `𓂀 /oracle CA — reveal any Base or Robinhood token (max 5/day)\n` +
       `🏛 /callnow — submit a call · 🏆 /gods 7d — leaderboard\n` +
       `📊 /pulse · 🌀 /myths · 💎 /pearls also available.\n\n` +
       `<i>Generate a new code anytime in the Transmute App — it will replace this one.</i>`,
@@ -266,7 +267,8 @@ export function registerGateCommands(bot: Telegraf): void {
     await ctx.reply(
       `${header}\n\n` +
         `🔮 /invoke — Hunt hidden microcaps (Base)\n` +
-        `𓂀 /oracle CA — Reveal any Base token by contract address\n` +
+        `🪶 /invokeRH — Hunt hidden microcaps (Robinhood Chain)\n` +
+        `𓂀 /oracle CA — Reveal any Base or Robinhood token by contract address\n` +
         `🏛 /callnow — Submit a call to the Pantheon\n` +
         `🏆 /gods 7d — Pantheon leaderboard\n` +
         `📊 /pulse — Market daily report\n` +
@@ -305,7 +307,8 @@ export async function handleStart(ctx: Context): Promise<void> {
             `Expires in: ${humanizeTtl(link.verified_until)}\n\n` +
             `<b>Channel the Oracle:</b>\n` +
             `🔮 /invoke — Hunt hidden microcaps\n` +
-            `𓂀 /oracle CA — Reveal any Base token\n` +
+            `🪶 /invokeRH — Hunt Robinhood Chain microcaps\n` +
+            `𓂀 /oracle CA — Reveal any Base or Robinhood token\n` +
             `🏛 /callnow — Submit a call to the Pantheon\n` +
             `🏆 /gods 7d — Pantheon leaderboard\n` +
             `📊 /pulse — Market daily report\n` +
@@ -328,7 +331,7 @@ export async function handleStart(ctx: Context): Promise<void> {
 
   const body =
     `<b>Access is token-gated.</b> Hold at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> in a Base wallet to unlock:\n\n` +
-    `🔮 /invoke (7/day) · 📊 /pulse · 🌀 /myths · 💎 /pearls\n\n` +
+    `🔮 /invoke (7/day) · 🪶 /invokeRH (7/day) · 📊 /pulse · 🌀 /myths · 💎 /pearls\n\n` +
     `Two ways to verify:\n` +
     `• 🎟 Generate a weekly code in the Transmute App, then send <code>/verify CODE</code>\n` +
     `• 🔗 Tap the button below to sign via browser (no gas, just an ownership signature).\n\n` +
@@ -348,8 +351,9 @@ export function buildHelpMessage(): string {
     `✨ /premium — List premium commands\n` +
     `🗑 /unlink — Remove wallet\n\n` +
     `<b>Premium (requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE):</b>\n` +
-    `🔮 /invoke — Hunt hidden microcaps (max 7/day, resets 00:00 UTC)\n` +
-    `𓂀 /oracle CA — Reveal any Base token (max 5/day)\n` +
+    `🔮 /invoke — Hunt hidden microcaps on Base (max 7/day, resets 00:00 UTC)\n` +
+    `🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain (max 7/day)\n` +
+    `𓂀 /oracle CA — Reveal any Base or Robinhood token (max 5/day)\n` +
     `🏛 /callnow — Submit a call to the Pantheon (max 3/day, 6h cooldown)\n` +
     `🏆 /gods 7d — Pantheon leaderboard (also 30d / all)\n` +
     `📊 /pulse — Market daily report\n` +

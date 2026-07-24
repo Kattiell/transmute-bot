@@ -1,10 +1,11 @@
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
-import { invokeOracle, invokeOracleWithPrompt } from './grok';
+import { invokeOracle, invokeOracleRobinhood, invokeOracleWithPrompt } from './grok';
 import { parseOracleOutput } from './parser';
-import { hardenProjects } from './oracle-harden';
+import { hardenProjects, hardenProjectsRobinhood } from './oracle-harden';
 import { formatWhispersReport, formatGenericReport } from './formatter';
 import { PULSE_PROMPT, MYTHS_PROMPT, PEARLS_PROMPT } from './prompts';
+import { ROBINHOOD_CHAIN } from './chains';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -47,6 +48,7 @@ I channel real-time on-chain intelligence from the Base chain — hidden microca
 <b>Commands:</b>
 
 🔮 /invoke — Hunt hidden microcaps
+🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain
 📊 /pulse — Market daily report (macro, sentiment, flows)
 🌀 /myths — Narrative tracker (rising stories)
 💎 /pearls — Daily financial wisdom
@@ -87,6 +89,41 @@ bot.command('invoke', async (ctx) => {
     await sendMessages(ctx.chat.id, messages);
   } catch (err) {
     console.error('[invoke] Error:', err);
+    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
+  } finally {
+    activeUsers.delete(userId);
+  }
+});
+
+// /invokeRH — Hidden Microcaps on Robinhood Chain (regex: Telegraf string
+// triggers are case-sensitive and users type /invokeRH as often as /invokerh)
+bot.command(/^invokerh$/i, async (ctx) => {
+  const userId = ctx.from.id;
+
+  if (activeUsers.has(userId)) {
+    return ctx.reply('⏳ Your previous invocation is still running. Please wait.');
+  }
+
+  activeUsers.add(userId);
+
+  try {
+    await ctx.reply('🪶 <b>Invoking the Oracle...</b>\n<i>Scanning Robinhood Chain for hidden microcaps. This may take 1-3 minutes.</i>', { parse_mode: 'HTML' });
+
+    const raw = await invokeOracleRobinhood();
+    const projects = parseOracleOutput(raw);
+
+    if (projects.length === 0) {
+      await ctx.reply('𓂀 The Oracle found no verified signals at this time.\n\n<i>All candidates failed verification. The market rests — or hides its cards well.</i>', { parse_mode: 'HTML' });
+      return;
+    }
+
+    // Harden against Robinhood Chain: tool-resolve each CA (or abstain) before
+    // formatting — a model-generated address is never sent as-is (I1).
+    const hardened = await hardenProjectsRobinhood(projects);
+    const messages = formatWhispersReport(hardened, { chain: ROBINHOOD_CHAIN, fdvCap: '$500K' });
+    await sendMessages(ctx.chat.id, messages);
+  } catch (err) {
+    console.error('[invokerh] Error:', err);
     await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
   } finally {
     activeUsers.delete(userId);
@@ -171,6 +208,7 @@ bot.help((ctx) => {
     `<b>𓂀 Transmute Oracle — Commands</b>
 
 🔮 /invoke — Hunt hidden microcaps on Base
+🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain
 📊 /pulse — Market daily report
 🌀 /myths — Narrative tracker
 💎 /pearls — Daily financial wisdom
@@ -197,6 +235,7 @@ bot.launch().then(async () => {
   await bot.telegram.setMyCommands([
     { command: 'start',  description: 'Start main menu' },
     { command: 'invoke', description: 'Hunt hidden microcaps' },
+    { command: 'invokerh', description: 'Hunt hidden microcaps on Robinhood Chain' },
     { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
     { command: 'myths',  description: 'Narrative tracker (rising stories)' },
     { command: 'pearls', description: 'Daily financial wisdom' },

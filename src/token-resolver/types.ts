@@ -85,6 +85,10 @@ export interface TokenRef {
   flags: SecurityFlag[];
   status: 'confirmed' | 'low_confidence' | 'abstained';
   reason?: string;
+  /** Tool-provided pair/pool page (DexScreener pair or GeckoTerminal pool).
+   *  Set by resolvers on chains DexScreener may not index (e.g. Robinhood);
+   *  when absent, formatters fall back to the chain's default DexScreener URL. */
+  marketUrl?: string;
 }
 
 /** Structured, auditable log line emitted per resolution ("why this CA?"). */

@@ -66,6 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         commands: [
           { command: 'start',   description: 'Start main menu' },
           { command: 'invoke',  description: 'Hunt hidden microcaps' },
+          { command: 'invokerh', description: 'Hunt hidden microcaps on Robinhood Chain' },
           { command: 'oracle',  description: 'Reveal a token by its contract address' },
           { command: 'callnow', description: 'Submit a token call to the Pantheon' },
           { command: 'gods',    description: 'Pantheon leaderboard (/gods 7d|30d|all)' },

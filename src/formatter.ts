@@ -2,6 +2,7 @@ import type { ParsedProject } from './types';
 import type { HardenedProject } from './oracle-harden';
 import type { TokenRef } from './token-resolver';
 import { extractField, extractConviction } from './parser';
+import { BASE_CHAIN, type ChainInfo } from './chains';
 
 /** Escape HTML special chars */
 function esc(text: string): string {
@@ -69,15 +70,19 @@ function convictionEmoji(conviction: string): string {
 }
 
 /** Contract block driven by the deterministic resolver — never the model's text. */
-function contractSection(r: TokenRef): string {
+function contractSection(r: TokenRef, chain: ChainInfo): string {
   const addr = r.address.toLowerCase();
-  const links = (a: string) =>
-    `📈 <a href="https://dexscreener.com/base/${esc(a)}">DexScreener</a> · 🔍 <a href="https://basescan.org/token/${esc(a)}">Basescan</a>`;
+  // Prefer the tool-provided pair/pool page (set on chains DexScreener may not
+  // index); otherwise the chain's default DexScreener token URL.
+  const marketUrl = r.marketUrl ?? `https://dexscreener.com/${chain.dexChainId}/${addr}`;
+  const marketName = /geckoterminal\.com/i.test(marketUrl) ? 'GeckoTerminal' : 'DexScreener';
+  const links =
+    `📈 <a href="${esc(marketUrl)}">${marketName}</a> · 🔍 <a href="${esc(chain.explorerTokenUrl(addr))}">${esc(chain.explorerName)}</a>`;
   if (r.status === 'confirmed') {
     return [
       `✅ <b>CONTRACT — verified</b>`,
       `<code>${esc(addr)}</code>`,
-      links(addr),
+      links,
       '',
     ].join('\n');
   }
@@ -86,7 +91,7 @@ function contractSection(r: TokenRef): string {
       `⚠️ <b>CONTRACT — unconfirmed</b>`,
       `<code>${esc(addr)}</code>`,
       `<i>${esc(r.reason ?? 'Verify the contract yourself before buying.')}</i>`,
-      links(addr),
+      links,
       '',
     ].join('\n');
   }
@@ -98,12 +103,15 @@ function contractSection(r: TokenRef): string {
   ].join('\n');
 }
 
-export function formatProjectCard(project: HardenedProject): string {
+export function formatProjectCard(project: HardenedProject, chain: ChainInfo = BASE_CHAIN): string {
   const conviction = extractConviction(project.fullText);
   const projectX = extractField(project.fullText, 'project x') || extractField(project.fullText, 'project x \\(@\\)');
   const creatorX = extractField(project.fullText, 'creator x') || extractField(project.fullText, 'creator x \\(@\\)');
   const fdv = extractField(project.fullText, 'FDV \\(USD\\)') || extractField(project.fullText, 'FDV');
-  const mcap = extractField(project.fullText, 'market cap \\(USD\\)') || extractField(project.fullText, 'market cap');
+  const mcap =
+    extractField(project.fullText, 'market cap \\(USD\\)') ||
+    extractField(project.fullText, 'market cap') ||
+    extractField(project.fullText, '\\bMC'); // Robinhood format writes "MC: [$]"
   const liq = extractField(project.fullText, 'liquidity \\(USD\\)') || extractField(project.fullText, 'liquidity');
   const vol = extractField(project.fullText, '24h volume \\(USD\\)') || extractField(project.fullText, '24h volume');
   const risks = extractField(project.fullText, 'risks');
@@ -153,7 +161,7 @@ export function formatProjectCard(project: HardenedProject): string {
 
   // Contract — driven by the deterministic resolver (tool-sourced CA or an
   // explicit "not confirmed"); NEVER the address from the model's text (I1).
-  msg += contractSection(project.resolution);
+  msg += contractSection(project.resolution, chain);
 
   // Official X links (informational — these are what the resolver matched the
   // contract against; they are social links, not the token identity).
@@ -178,13 +186,18 @@ export function formatProjectCard(project: HardenedProject): string {
   return msg.trim();
 }
 
-export function formatWhispersReport(projects: HardenedProject[]): string[] {
+export function formatWhispersReport(
+  projects: HardenedProject[],
+  opts: { chain?: ChainInfo; fdvCap?: string } = {},
+): string[] {
+  const chain = opts.chain ?? BASE_CHAIN;
+  const fdvCap = opts.fdvCap ?? '$1M';
   const messages: string[] = [];
 
   let header = '𓂀 <b>TRANSMUTE ORACLE</b>\n';
-  header += '<b>Hidden Microcaps — Base Chain</b>\n';
+  header += `<b>Hidden Microcaps — ${esc(chain.label)} Chain</b>\n`;
   header += `<i>${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</i>\n\n`;
-  header += `Found <b>${projects.length}</b> signal${projects.length !== 1 ? 's' : ''} below $1M FDV`;
+  header += `Found <b>${projects.length}</b> signal${projects.length !== 1 ? 's' : ''} below ${esc(fdvCap)} FDV`;
 
   const footer =
     '━━━━━━━━━━━━━━━\n' +
@@ -198,7 +211,7 @@ export function formatWhispersReport(projects: HardenedProject[]): string[] {
   const MAX_LEN = 3900;
   const SEPARATOR = '\n\n━━━━━━━━━━━━━━━\n\n';
 
-  const chunks: string[] = [header, ...projects.map(formatProjectCard), footer];
+  const chunks: string[] = [header, ...projects.map((p) => formatProjectCard(p, chain)), footer];
 
   let current = '';
   for (const chunk of chunks) {

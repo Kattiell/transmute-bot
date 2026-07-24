@@ -13,11 +13,12 @@ export const GATE_CONFIG = {
   cacheTtlSeconds: 60,
 };
 
-export const PREMIUM_COMMANDS = ['invoke', 'pulse', 'myths', 'pearls', 'oracle', 'callnow'] as const;
+export const PREMIUM_COMMANDS = ['invoke', 'invokerh', 'pulse', 'myths', 'pearls', 'oracle', 'callnow'] as const;
 export type PremiumCommand = (typeof PREMIUM_COMMANDS)[number];
 
 export const DAILY_LIMITS: Partial<Record<PremiumCommand, number>> = {
   invoke: parseInt(process.env.GATE_INVOKE_DAILY_LIMIT || '7', 10),
+  invokerh: parseInt(process.env.GATE_INVOKERH_DAILY_LIMIT || '7', 10),
   oracle: parseInt(process.env.GATE_ORACLE_DAILY_LIMIT || '5', 10),
   callnow: parseInt(process.env.GATE_CALLNOW_DAILY_LIMIT || '3', 10),
 };

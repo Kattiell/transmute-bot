@@ -1,4 +1,4 @@
-import { ORACLE_PROMPT } from './prompts';
+import { ORACLE_PROMPT, ORACLE_RH_PROMPT } from './prompts';
 
 // Venice.ai inference (OpenAI-compatible). Routes through Venice instead of
 // xAI directly; the `grok-4-3` model keeps behavior (native web + X search)
@@ -118,6 +118,11 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
 
 export async function invokeOracle(): Promise<string> {
   return callGrok(ORACLE_PROMPT, ORACLE_INVOKE_MODEL);
+}
+
+/** /invokeRH — same multi-agent model as /invoke, pointed at Robinhood mainnet. */
+export async function invokeOracleRobinhood(): Promise<string> {
+  return callGrok(ORACLE_RH_PROMPT, ORACLE_INVOKE_MODEL);
 }
 
 export async function invokeOracleWithPrompt(prompt: string): Promise<string> {

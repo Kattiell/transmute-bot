@@ -25,11 +25,13 @@ function extractTicker(raw: string): string {
 function extractName(raw: string): string {
   const text = stripBold(raw);
 
-  // New "𓂀 Signal #N — Project Name / $TICKER" header (the "𓂀 Signal" marker
-  // is consumed by the split, so the section begins "#N — Name / $TICKER").
-  // Anchored at the absolute start and restricted to an em/en dash so legacy
-  // bullet lines ("- builder / dev") can never false-match.
-  const headerName = text.match(/^\s*#?\s*\d*\s*[—–]\s*([^\n/]+?)\s*\/\s*\$?[A-Za-z]/);
+  // New "𓂀 Signal #N — Project Name / $TICKER" header. When the split consumed
+  // the "𓂀 Signal" marker (Base's ⸻ format) the section begins "#N — Name /
+  // $TICKER"; when the split was on ━ rules (Robinhood format) the marker is
+  // still present, so it is matched as an optional prefix. Anchored at the
+  // absolute start and restricted to an em/en dash so legacy bullet lines
+  // ("- builder / dev") can never false-match.
+  const headerName = text.match(/^\s*(?:𓂀\s*)?(?:signal|project)?\s*#?\s*\d*\s*[—–]\s*([^\n/]+?)\s*\/\s*\$?[A-Za-z]/i);
   if (headerName) {
     const name = headerName[1].replace(/\$[A-Z0-9]+/gi, '').trim();
     if (name.length > 1 && name.length < 80) return name;
@@ -70,6 +72,15 @@ function extractSummary(raw: string): string {
     return thesis.length > 200 ? thesis.slice(0, 197) + '...' : thesis;
   }
 
+  // Robinhood Alpha Hunter format: the thesis lives under "Why It Is
+  // Interesting Now 𓂀" (sections are blank-line separated).
+  const interestingMatch = stripped.match(/why\s+it\s+is\s+interesting\s+now[^\n]*\n+([\s\S]+?)(?:\n\n)/i);
+  if (interestingMatch) {
+    const rawMatch = raw.match(/why\s+it\s+is\s+interesting\s+now[^\n]*\n+([\s\S]+?)(?:\n\n)/i);
+    const thesis = (rawMatch || interestingMatch)[1].trim().replace(/\n/g, ' ');
+    return thesis.length > 200 ? thesis.slice(0, 197) + '...' : thesis;
+  }
+
   const oracularMatch = stripped.match(/oracular\s*analysis\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n[-]?\s*judgment)/i);
   if (oracularMatch) {
     const rawMatch = raw.match(/oracular\s*analysis\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n[-]?\s*judgment)/i);
@@ -88,9 +99,10 @@ function extractSignals(raw: string): string {
   //   "On-chain Signals:"                     (Primordial Alpha Hunter v2)
   //   "On-chain + Social Graph Signals:"      (Primordial Alpha Hunter v1)
   //   "On-chain + Social Signals:" / "X Signals:" (legacy prompts)
+  //   "On-Chain + Market Structure"           (Robinhood Alpha Hunter)
   // The "+ social/x" segment is optional; cached Grok outputs from older
   // prompts still parse cleanly.
-  const labelRe = /on.chain\s*(?:\+?\s*(?:social(?:\s*graph)?|x)\s*)?signals?\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n📈|\njudgment|\nrisks?\s*[:=]|\n𓂀|\nteaching|\nwallet\s*intelligence|\nsocial\s*graph\s*signals?)/i;
+  const labelRe = /(?:on.chain\s*(?:\+?\s*(?:social(?:\s*graph)?|x)\s*)?signals?|on.chain\s*\+\s*market\s*structure)\s*[:=]?\s*([\s\S]+?)(?:\n\n|\n📈|\njudgment|\nrisks?\s*[:=]|\n𓂀|\nteaching|\nwallet\s*intelligence|\nsocial\s*graph\s*signals?)/i;
   const match = stripped.match(labelRe);
   if (match) {
     const rawMatch = raw.match(labelRe);
