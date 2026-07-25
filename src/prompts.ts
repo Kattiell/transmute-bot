@@ -1064,6 +1064,13 @@ Search from as many useful angles as possible:
 * token utility changes;
 * partnerships that can be independently verified.
 
+**Social Profile Discovery (Priority Search):**
+Actively hunt for official and credible X/Twitter accounts of the project and its founder/lead developer(s). Use multiple search angles:
+- Project name + "official" / ticker + "official" / CA + project name
+- Check website footer, docs, GitHub README, Telegram/Discord pinned messages, and launchpad pages for linked X accounts
+- Look for the first account that posted the CA, technical updates, or self-identified as the team
+- Cross-reference with on-chain deployer behavior and timeline
+
 You may start from any clue:
 
 * a ticker;
@@ -1274,10 +1281,40 @@ Use accurate wording:
 
 ━━━━━━━━━━━━━━━━━━━━
 
+**X / SOCIAL PROFILE DISCOVERY & VERIFICATION**
+
+This is a high-priority research axis. You must actively search for and attempt to verify official X profiles for both the **project** and the **founder/lead developer(s)**.
+
+Search strategy:
+- Use X search for exact project name, ticker, or CA combined with "official", "launch", "CA:", or self-identification by the team.
+- Check every project source (website, docs, GitHub, Telegram/Discord, launchpad) for linked X accounts.
+- For potential founder/dev accounts: Look for people who posted the CA first, share technical details, link GitHub, or have consistent history with the project timeline.
+- Verify authenticity of any claimed official account:
+  - Has pinned or recently posted the correct CA + website/docs link
+  - Bio contains official links (website, docs, Telegram)
+  - Posting history and style match the project's development and launch timeline
+  - No conflicting accounts with stronger on-chain or first-mover proof
+  - Community consensus points to the same account
+
+If a credible official project X is found, note its recent activity and engagement quality.
+
+If a founder/dev X is identifiable, assess transparency and credibility based on public posting behavior.
+
+If after thorough search no credible official X is found, explicitly state it.
+
+**Output format (use this exactly):**
+- Official Project X: [@handle](https://x.com/handle) or "Not found after thorough search"
+- Founder / Dev X: [@handle](https://x.com/handle) or "Dev not publicly identified" or "Not publicly confirmed"
+
+Anonymous or pseudonymous teams are acceptable. In these cases, clearly state the above.
+
+Having verifiable official X profiles is a **positive transparency signal** and should be noted as such, but it is not a hard requirement. Strong anonymous memecoins or low-profile builders with excellent on-chain/product signals must not be excluded.
+
+━━━━━━━━━━━━━━━━━━━━
+
 VERIFICATION MODE
 
 Discovery can be flexible.
-
 Final selection cannot.
 
 Every final token must pass these checks:
@@ -1290,8 +1327,8 @@ Every final token must pass these checks:
 * MC below $500,000;
 * FDV below $500,000;
 * project source found when one exists;
-* official X found when one exists;
-* founder or dev identity checked when publicly available;
+* **official X account identified and verified when it exists (strong preference)**;
+* **founder or dev X account identified and linked when publicly available (strong preference)**;
 * no obvious CA conflict;
 * no obvious clone or fake social-account issue;
 * no severe liquidity issue;
@@ -1301,7 +1338,7 @@ Every final token must pass these checks:
 Cross-check the CA through as many reliable sources as possible, ideally including:
 
 1. Project-controlled source:
-    * Official X
+    * Official X (pinned post or recent announcement with CA)
     * Website
     * Docs
     * App
@@ -1380,9 +1417,12 @@ The best candidates are usually where several things are beginning to align:
 * founder quality and valuation;
 * meme quality and community;
 * catalyst and timing;
-* market structure and asymmetry.
+* market structure and asymmetry;
+* **transparency via verifiable official X profiles (project and/or dev) when available**.
 
 Prefer tokens where the evidence is real but the broader market attention is still incomplete.
+
+**Slight preference** should be given to opportunities that have credible, verifiable official X profiles (project and/or founder), as this improves transparency, community building signals, and long-term accountability. However, excellent anonymous or low-social-profile projects with strong on-chain, product, or cultural signals must still be considered.
 
 Exclude weak candidates even when they are pumping.
 
@@ -1404,9 +1444,9 @@ Category: [Meme / Culture / AI / Trading / Infrastructure / DeFi / App / Other]
 Tier: [S / A / B]
 Alpha Score: [0–100]
 
-Official Project X: [@project / Not found]
-Founder / Dev X: [@dev / Dev not publicly identified / Not publicly confirmed]
-Project ↔ Dev Proof: [short factual explanation]
+Official Project X: [@handle](https://x.com/handle) / Not found after thorough search / Not verified
+Founder / Dev X: [@handle](https://x.com/handle) / Dev not publicly identified / Not publicly confirmed
+Project ↔ Dev Proof: [short factual explanation of how the connection was verified — e.g. "Dev posted the CA from this X account on [date]", "GitHub linked in bio", "Self-identified in pinned post", etc.]
 
 Canonical Robinhood Mainnet CA:
 [full CA]

@@ -106,7 +106,11 @@ function contractSection(r: TokenRef, chain: ChainInfo): string {
 export function formatProjectCard(project: HardenedProject, chain: ChainInfo = BASE_CHAIN): string {
   const conviction = extractConviction(project.fullText);
   const projectX = extractField(project.fullText, 'project x') || extractField(project.fullText, 'project x \\(@\\)');
-  const creatorX = extractField(project.fullText, 'creator x') || extractField(project.fullText, 'creator x \\(@\\)');
+  const creatorX =
+    extractField(project.fullText, 'creator x') ||
+    extractField(project.fullText, 'creator x \\(@\\)') ||
+    // "Creator / Dev X:" (Base format) and "Founder / Dev X:" (Robinhood format)
+    extractField(project.fullText, '(?:creator|founder)\\s*/\\s*dev x');
   const fdv = extractField(project.fullText, 'FDV \\(USD\\)') || extractField(project.fullText, 'FDV');
   const mcap =
     extractField(project.fullText, 'market cap \\(USD\\)') ||
@@ -164,15 +168,17 @@ export function formatProjectCard(project: HardenedProject, chain: ChainInfo = B
   msg += contractSection(project.resolution, chain);
 
   // Official X links (informational — these are what the resolver matched the
-  // contract against; they are social links, not the token identity).
+  // contract against; they are social links, not the token identity). The field
+  // may be "@name", a markdown link "[@name](https://x.com/name)", or prose like
+  // "Not found after thorough search" — only a real @handle becomes a link.
   const xLinks: string[] = [];
-  if (projectX) {
-    const handle = projectX.replace(/^@/, '');
-    xLinks.push(`🐦 <a href="https://x.com/${esc(handle)}">@${esc(handle)}</a>`);
+  const projectHandle = projectX.match(/@([A-Za-z0-9_]{2,15})/)?.[1];
+  if (projectHandle) {
+    xLinks.push(`🐦 <a href="https://x.com/${esc(projectHandle)}">@${esc(projectHandle)}</a>`);
   }
-  if (creatorX) {
-    const handle = creatorX.replace(/^@/, '');
-    xLinks.push(`👤 <a href="https://x.com/${esc(handle)}">@${esc(handle)}</a>`);
+  const creatorHandle = creatorX.match(/@([A-Za-z0-9_]{2,15})/)?.[1];
+  if (creatorHandle) {
+    xLinks.push(`👤 <a href="https://x.com/${esc(creatorHandle)}">@${esc(creatorHandle)}</a>`);
   }
   if (xLinks.length > 0) {
     msg += `🔗 <b>LINKS</b>\n` + xLinks.join('\n') + '\n\n';
