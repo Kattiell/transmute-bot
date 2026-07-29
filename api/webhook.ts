@@ -276,7 +276,7 @@ bot.command(/^invokerh$/i, async (ctx) => {
       const hardened = await hardenProjectsRobinhood(projects);
       await sendMessages(
         ctx.chat.id,
-        formatWhispersReport(hardened, { chain: ROBINHOOD_CHAIN, fdvCap: '$500K' }),
+        formatWhispersReport(hardened, { chain: ROBINHOOD_CHAIN, fdvCap: '$150K' }),
         ctx.chat.type,
       );
     }
