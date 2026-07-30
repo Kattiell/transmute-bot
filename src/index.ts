@@ -6,6 +6,7 @@ import { hardenProjects, hardenProjectsRobinhood } from './oracle-harden';
 import { formatWhispersReport, formatGenericReport } from './formatter';
 import { PULSE_PROMPT, MYTHS_PROMPT, PEARLS_PROMPT } from './prompts';
 import { ROBINHOOD_CHAIN } from './chains';
+import { isOracleV4Enabled, runRobinhoodScanV4 } from './oracle-v4';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -108,6 +109,15 @@ bot.command(/^invokerh$/i, async (ctx) => {
 
   try {
     await ctx.reply('🪶 <b>Invoking the Oracle...</b>\n<i>Scanning Robinhood Chain for hidden microcaps. This may take 1-3 minutes.</i>', { parse_mode: 'HTML' });
+
+    // v4 multi-stage pipeline (Venice by default, xAI when keyed): discovery →
+    // deterministic filter → forensic gate → attribution → red team → synthesis.
+    // Verification and CA hardening are built in, so its report is sent as-is.
+    if (isOracleV4Enabled()) {
+      const report = await runRobinhoodScanV4();
+      await sendMessages(ctx.chat.id, formatGenericReport('TRANSMUTE ORACLE v4 — ROBINHOOD SCAN', report));
+      return;
+    }
 
     const raw = await invokeOracleRobinhood();
     const projects = parseOracleOutput(raw);

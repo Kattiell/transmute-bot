@@ -4,6 +4,7 @@ import { waitUntil } from '@vercel/functions';
 import { Telegraf } from 'telegraf';
 import { timingSafeEqual } from 'node:crypto';
 import { invokeOracle, invokeOracleRobinhood, invokeOracleWithPrompt } from '../src/grok';
+import { isOracleV4Enabled, runRobinhoodScanV4 } from '../src/oracle-v4';
 import { parseOracleOutput } from '../src/parser';
 import { hardenProjects, hardenProjectsRobinhood } from '../src/oracle-harden';
 import { formatWhispersReport, formatGenericReport } from '../src/formatter';
@@ -261,6 +262,22 @@ bot.command(/^invokerh$/i, async (ctx) => {
     );
 
     const tOracleStart = Date.now();
+
+    // v4 multi-stage pipeline (Venice by default, xAI when keyed): scout
+    // shards → deterministic filter → forensic gate → dev↔X attribution →
+    // red team → synthesis. CA verification/hardening is built in (Stage 1.5
+    // gates on Blockscout/RPC + DexScreener facts), so its report is sent as-is.
+    if (isOracleV4Enabled()) {
+      const report = await runRobinhoodScanV4();
+      console.log(`[invokerh] v4 scan done in ${Date.now() - tOracleStart}ms chat=${ctx.chat.type}`);
+      await sendMessages(
+        ctx.chat.id,
+        formatGenericReport('TRANSMUTE ORACLE v4 — ROBINHOOD SCAN', report),
+        ctx.chat.type,
+      );
+      return;
+    }
+
     const raw = await invokeOracleRobinhood();
     console.log(`[invokerh] oracle done in ${Date.now() - tOracleStart}ms chat=${ctx.chat.type}`);
 
