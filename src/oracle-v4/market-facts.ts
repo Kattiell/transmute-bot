@@ -23,6 +23,9 @@ export interface FactsV4 {
   vol1h_usd: number | null;
   /** null = source did not report (GeckoTerminal fallback) — gate treats null as unknown, not zero. */
   txns24h: number | null;
+  /** Split kept separately: sells24h > 0 across distinct makers is direct evidence sells succeed (K01). */
+  buys24h: number | null;
+  sells24h: number | null;
   makers24h: number | null;
   age_hours: number | null;
   pair_address: string | null;
@@ -79,6 +82,8 @@ export async function fetchFactsV4(ca: string, ctx: ChainContextV4): Promise<Fac
           vol24h_usd: pair.volume?.h24 ?? 0,
           vol1h_usd: pair.volume?.h1 ?? null,
           txns24h: buys != null || sells != null ? (buys ?? 0) + (sells ?? 0) : null,
+          buys24h: buys ?? null,
+          sells24h: sells ?? null,
           makers24h: pair.makers?.h24 ?? null,
           age_hours: pair.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 36e5 : null,
           pair_address: pair.pairAddress ?? null,
@@ -113,6 +118,8 @@ export async function fetchFactsV4(ca: string, ctx: ChainContextV4): Promise<Fac
     vol24h_usd: gt.volume24hUsd ?? 0,
     vol1h_usd: null,
     txns24h: null,
+    buys24h: null,
+    sells24h: null,
     makers24h: null,
     age_hours: gt.pairAgeDays != null ? gt.pairAgeDays * 24 : null,
     pair_address: null,

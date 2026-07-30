@@ -7,6 +7,7 @@
  */
 import type { ChainContextV4 } from './chain-context';
 import { chainContextJson } from './chain-context';
+import type { ChainEvidence } from './chain-evidence';
 import { K } from './constants';
 import type { FactsV4 } from './market-facts';
 
@@ -111,7 +112,7 @@ ${ANTI_HALLUCINATION}`;
 }
 
 /** Spec §STAGE 2 — one candidate per call; facts injected, never requested. */
-export function gatePrompt(facts: FactsV4, ctx: ChainContextV4): string {
+export function gatePrompt(facts: FactsV4, ctx: ChainContextV4, evidence: ChainEvidence): string {
   return `𓂀 STAGE 2 — FORENSIC GATE 𓂀
 
 CHAIN CONTEXT: ${chainContextJson(ctx)}
@@ -121,18 +122,49 @@ ${JSON.stringify(facts, null, 2)}
 Your job is NOT to like this token. Your job is to try to disqualify it.
 Default posture: this is a scam or a dead project until evidence says otherwise.
 
-── PART 1 — CA TRIANGULATION (all three layers required) ──
-L1 PROJECT SOURCE: did the official X account, website, docs, GitHub, or launchpad record
-   publish this exact address? Give the direct permalink to the post/page containing it.
-L2 CHAIN: explorer page for the contract on ${ctx.explorer_domain} — deployer, deploy tx +
-   timestamp, verified source yes/no, token metadata, related contracts from the same deployer.
-L3 MARKET: live pair page — liquidity, recent buys AND sells by distinct makers, and
-   evidence that selling actually succeeds.
-If any layer is missing, ambiguous, or contradicts another → verdict DISCARD. Do not downgrade.
+── PART 0 — WHAT CODE ALREADY VERIFIED (authoritative) ──
+Triangulation layers L2 (chain) and L3 (market) were verified DETERMINISTICALLY in code
+before this call, via REST APIs:
+- L2: contract bytecode existence confirmed on ${ctx.explorer_domain} (API v2 / RPC eth_getCode).
+- L3: live pair with the liquidity/volume/txns/makers figures in CANDIDATE, retrieved from
+  the ${facts.data_source} REST API at ${facts.facts_retrieved_at}.
+CHAIN DATA (code-fetched from the ${ctx.explorer_domain} API — same authority as CANDIDATE):
+${JSON.stringify(evidence, null, 2)}
+
+Treat L2 and L3 as SATISFIED. In ca_triangulation, set explorer_url to
+${ctx.explorerTokenUrl(facts.ca)} and market_url to ${facts.pair_url}.
+DO NOT attempt to open explorer or DEX pair pages in your search tools: those sites are
+client-side rendered and return empty content to non-browser fetchers. An empty page render
+is NOT evidence of absence and must NEVER be cited as a discard reason. A null field in
+CHAIN DATA means "the API did not report it" — not "false", not "suspicious".
+Cite code-fetched values as [chain-data, ${evidence.evidence_retrieved_at}].
+
+── PART 1 — CA TRIANGULATION, LAYER L1 (your search task) ──
+L1 PROJECT SOURCE: did a project-controlled source publish this exact address? Acceptable:
+   the official X account, the project website or docs, a GitHub repo, or a launchpad record.
+   Give the direct permalink to the post/page containing the address.
+   Start from CANDIDATE.socials, CANDIDATE.websites and CANDIDATE.source_urls (the pages
+   where scouts first saw this CA). On X, search the full CA string AND its truncated form
+   (first 6 + last 4 chars) — launch announcements are often screenshots, so read images.
+If no project-controlled source published this CA → verdict DISCARD (clone/fake protection).
 
 ── PART 2 — KILL-SWITCH CHECKLIST ──
 Answer each strictly "true" / "false" / "UNVERIFIABLE", each backed by [url, retrieved_at]
-in the dossier. ANY "true" → DISCARD. ANY "UNVERIFIABLE" on items marked [BLOCKING] → DISCARD.
+or [chain-data, retrieved_at] in the dossier. ANY "true" → DISCARD. ANY "UNVERIFIABLE" on
+items marked [BLOCKING] → DISCARD.
+
+Answer FIRST from CANDIDATE and CHAIN DATA — code-fetched REST facts are verified evidence.
+Use search only for what code cannot see (clones, reputation, socials, wash patterns).
+Deterministic readings you MUST apply before resorting to UNVERIFIABLE:
+- K01: CANDIDATE.sells24h > 0 with makers24h ≥ ${K.MAKERS24H_MIN} distinct makers is direct
+  on-chain evidence that selling succeeds → "false" unless you hold affirmative contrary
+  evidence (absence of evidence is not contrary evidence).
+- K02/K04: when CHAIN DATA.source_verified is true, judge from CHAIN DATA.source_flags
+  (has_public_mint / has_blacklist / has_pause / has_fee_setter); all false → answer "false".
+- K03: CHAIN DATA.proxy_type null → "false".
+- K05: CANDIDATE.age_hours ≥ 168 → "false" by definition (pool is ≥ 7 days old).
+  Below 168h, CHAIN DATA.lp_burned_share_pct ≥ 90 → "false" (LP burned).
+- K06: use CHAIN DATA.top10_share_ex_lp_pct directly when present.
 
 [BLOCKING] K01 honeypot: sells blocked, or transfer restricted to allowlist
 [BLOCKING] K02 mint authority live, or an owner/minter role can inflate supply
@@ -384,7 +416,7 @@ Render exactly this structure, in plain text (no markdown headers, no code fence
 
 𓂀 TRANSMUTE ORACLE — SCAN [scan_utc] 𓂀
 Chain: Robinhood Chain ([chain_id]) · Candidates scanned: [counts.scouted] · Survived filter: [counts.survived_filter] · Survived gate: [counts.survived_gate] · Red-team killed: [counts.killed_by_redteam]
-Data as of: [facts_retrieved_at of the newest pick] (max staleness ${K.MAX_STALENESS_MIN}m)
+Data as of: [facts_retrieved_at of the newest pick; when picks is empty use scan_utc] (max staleness ${K.MAX_STALENESS_MIN}m)
 
 Rank | Project | $TICKER | FDV | Liq | Circ% | Alpha | Conf | EDGE | Risk | Dev Tier | Dev X
 (one row per pick, ranked by EDGE descending)

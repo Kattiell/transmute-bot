@@ -28,16 +28,29 @@ Zero picks is a valid, correct output — the pipeline never pads.
 
 ## Activation & backends
 
-v4 runs on the bot's existing **Venice** route by default (`VENICE_API_KEY`,
-already configured). Venice exposes only on/off search toggles — no
+**v4 is OPT-IN: set `ORACLE_V4=on`.** By default `/invokeRH` runs the v3
+single-pass `ORACLE_RH_PROMPT` ("Open-Ended Alpha Hunter") verbatim, followed
+by the existing CA-hardening pass. The staged pipeline proved too strict in
+its first deployment (2026-07-30: every scan returned zero because the gate
+LLM was asked to browse Blockscout/DexScreener pages, which are client-side
+rendered and return empty to search tools → "missing layer" → DISCARD).
+
+The gate has since been redesigned around `chain-evidence.ts`: everything the
+Blockscout API v2 can answer (holders, top-10 concentration ex-LP, verified
+source + pattern flags, proxy type, creator, LP-burn share) is fetched in
+code and injected as authoritative fact; L2/L3 triangulation is marked
+code-satisfied, and the LLM's search task is L1 (project source published the
+CA) plus the socially-verifiable K-items — with the project's own domains and
+launchpads added to the search scope.
+
+When `ORACLE_V4=on`: it runs on the bot's existing **Venice** route
+(`VENICE_API_KEY`). Venice exposes only on/off search toggles — no
 `allowed_domains` / `allowed_x_handles` / `from_date` filters — so shard
 scoping is injected as a mandatory SOURCE SCOPE block in the prompt. That is
 weaker than an API-level filter, but Stage 1.5 (code) is the hard guarantee
 either way: an out-of-scope or invented CA dies at the existence/market check.
-
 Setting `XAI_API_KEY` upgrades every stage to xAI's `/v1/responses` with true
-server-side tool filters (the spec's native runtime). `ORACLE_V4=off` forces
-the v3 single-pass fallback.
+server-side tool filters (the spec's native runtime).
 
 | Env var | Default | Purpose |
 |---|---|---|
@@ -46,7 +59,7 @@ the v3 single-pass fallback.
 | `XAI_API_KEY` | — | Optional upgrade to hard API-level shard filters |
 | `XAI_MODEL` | `grok-4.5` | xAI model when keyed |
 | `XAI_BASE_URL` | `https://api.x.ai/v1` | xAI API base |
-| `ORACLE_V4` | — | Set `off` to force the v3 fallback |
+| `ORACLE_V4` | — | Set `on` to enable the staged pipeline (default: v3 single-pass prompt) |
 | `ORACLE_V4_DEADLINE_MS` | `240000` | Whole-scan wall clock (webhook Lambda is 300s) |
 | `ORACLE_V4_TRUSTED_HANDLES` | — | CSV, ≤20 — enables curated shard E |
 | `ORACLE_V4_LAUNCHPAD_DOMAINS` | Virtuals | CSV of launchpads confirmed live on Robinhood Chain (shard C) |

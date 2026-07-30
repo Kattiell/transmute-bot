@@ -49,9 +49,14 @@ function backend(): Backend | null {
   return null;
 }
 
-/** v4 runs on either backend; ORACLE_V4=off forces the v3 single-pass fallback. */
+/**
+ * v4 is OPT-IN (`ORACLE_V4=on`): by default /invokeRH runs the v3 single-pass
+ * ORACLE_RH_PROMPT ("Open-Ended Alpha Hunter") verbatim, with the existing
+ * CA-hardening pass. The staged pipeline only takes over when explicitly
+ * requested and a backend is configured.
+ */
 export function isOracleV4Enabled(): boolean {
-  if (process.env.ORACLE_V4 === 'off') return false;
+  if (process.env.ORACLE_V4 !== 'on') return false;
   return backend() !== null;
 }
 

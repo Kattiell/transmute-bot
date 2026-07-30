@@ -10,6 +10,7 @@
  * is skipped fail-closed and reported in SCAN INTEGRITY, never guessed.
  */
 import { robinhoodChainContext } from './chain-context';
+import { fetchChainEvidence } from './chain-evidence';
 import { K, exclusionList, trustedHandles } from './constants';
 import { buildShards } from './shards';
 import { deterministicFilter, refreshStaleFacts } from './filter';
@@ -47,6 +48,14 @@ async function pool<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): 
     out.push(...(await Promise.all(items.slice(i, i + limit).map(fn))));
   }
   return out;
+}
+
+function domainOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
 }
 
 export async function runRobinhoodScanV4(): Promise<string> {
@@ -107,12 +116,26 @@ export async function runRobinhoodScanV4(): Promise<string> {
 
     const gateMs = stageBudget(90_000);
     if (!gateMs) return { facts, gate: null, attribution: null, redteam: null, skipped: ['gate:deadline'] };
+
+    // Everything the explorer API can answer is fetched in code and INJECTED —
+    // the gate LLM cannot browse Blockscout/DexScreener (client-rendered SPAs
+    // return empty to search tools, which used to kill every candidate here).
+    const evidence = await fetchChainEvidence(facts.ca, ctx, facts.pair_address);
+
+    // L1 needs the project's own pages in scope; xAI caps allowed_domains at 5.
+    const projectDomains = [...facts.websites, ...facts.socials.map((s) => s.url)]
+      .map(domainOf)
+      .filter((d): d is string => Boolean(d) && d !== 'x.com' && d !== 'twitter.com');
+    const gateDomains = [
+      ...new Set(['github.com', ...projectDomains, ...ctx.launchpads.map((l) => l.domain)]),
+    ].slice(0, 5);
+
     const gate = await grokSearch({
-      prompt: gatePrompt(facts, ctx),
+      prompt: gatePrompt(facts, ctx, evidence),
       tools: [
         {
           type: 'web_search',
-          filters: { allowed_domains: [ctx.explorer_domain, 'dexscreener.com', 'geckoterminal.com', 'github.com'] },
+          filters: { allowed_domains: gateDomains },
           enable_image_understanding: true,
         },
         { type: 'x_search', enable_image_understanding: true },
@@ -151,7 +174,13 @@ export async function runRobinhoodScanV4(): Promise<string> {
     let redteam: RedTeamOutputT | null = null;
     if (redMs) {
       const stripped = JSON.stringify(
-        { facts, kill_switch: gate.kill_switch, ca_triangulation: gate.ca_triangulation, attribution },
+        {
+          facts,
+          chain_evidence: evidence,
+          kill_switch: gate.kill_switch,
+          ca_triangulation: gate.ca_triangulation,
+          attribution,
+        },
         null,
         2,
       );

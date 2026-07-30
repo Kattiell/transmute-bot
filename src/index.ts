@@ -110,9 +110,10 @@ bot.command(/^invokerh$/i, async (ctx) => {
   try {
     await ctx.reply('🪶 <b>Invoking the Oracle...</b>\n<i>Scanning Robinhood Chain for hidden microcaps. This may take 1-3 minutes.</i>', { parse_mode: 'HTML' });
 
-    // v4 multi-stage pipeline (Venice by default, xAI when keyed): discovery →
+    // Optional v4 multi-stage pipeline (ORACLE_V4=on): discovery →
     // deterministic filter → forensic gate → attribution → red team → synthesis.
     // Verification and CA hardening are built in, so its report is sent as-is.
+    // Default path (below) is the v3 single-pass ORACLE_RH_PROMPT + hardening.
     if (isOracleV4Enabled()) {
       const report = await runRobinhoodScanV4();
       await sendMessages(ctx.chat.id, formatGenericReport('TRANSMUTE ORACLE v4 — ROBINHOOD SCAN', report));

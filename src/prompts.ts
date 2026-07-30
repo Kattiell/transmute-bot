@@ -1507,9 +1507,7 @@ Most Asymmetric Early Bet: [$TICKER]
 Highest-Risk Signal: [$TICKER + reason]
 Most Important Thing to Re-Check: [specific item]
 
-NFA. Research only. Always verify the CA, Robinhood mainnet deployment, current MC, FDV, liquidity, active pair, holder distribution, contract permissions, deployer history, and all relevant risks before taking any on-chain action.
-
-Always check the CA and posts in the official @ of the project.`.trim();
+NFA. Research only. Always verify the CA, Robinhood mainnet deployment, current MC, FDV, liquidity, active pair, holder distribution, contract permissions, deployer history, and all relevant risks before taking any on-chain action.`.trim();
 
 export const PULSE_PROMPT = `
 𓂀 MANDATE: Whisper of the Eternal Pulse - Eye of the Macro Realm
