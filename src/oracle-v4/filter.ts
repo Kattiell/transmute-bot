@@ -126,9 +126,16 @@ export async function deterministicFilter(
     // 6 — numeric gates, API values only. txns/makers may be null on the
     // GeckoTerminal fallback (the API does not report them) — null passes the
     // gate but stays null in the facts, so the forensic gate sees the hole.
+    // Valuation band gates on the LOWER of MC and FDV (owner directive: more
+    // inclusive — a token with low circulating MC but high FDV still qualifies;
+    // the gate stage sees both numbers and judges the supply overhang).
+    const valuation = Math.min(
+      facts.mc_usd > 0 ? facts.mc_usd : Infinity,
+      facts.fdv_usd > 0 ? facts.fdv_usd : Infinity,
+    );
     const vl = facts.liq_usd > 0 ? facts.vol24h_usd / facts.liq_usd : Infinity;
     const gates: [boolean, string][] = [
-      [facts.fdv_usd > 0 && facts.fdv_usd <= K.FDV_MAX, 'fdv_out_of_band'],
+      [valuation !== Infinity && valuation <= K.FDV_MAX, 'valuation_out_of_band'],
       [facts.liq_usd >= K.LIQ_MIN, 'liquidity_below_floor'],
       [facts.vol24h_usd >= K.VOL24H_MIN, 'volume_below_floor'],
       [vl >= K.VOL_LIQ_MIN && vl <= K.VOL_LIQ_MAX, 'vol_liq_ratio_out_of_band'],

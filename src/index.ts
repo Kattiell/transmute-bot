@@ -130,7 +130,7 @@ bot.command(/^invokerh$/i, async (ctx) => {
     // Harden against Robinhood Chain: tool-resolve each CA (or abstain) before
     // formatting — a model-generated address is never sent as-is (I1).
     const hardened = await hardenProjectsRobinhood(projects);
-    const messages = formatWhispersReport(hardened, { chain: ROBINHOOD_CHAIN, fdvCap: '$150K' });
+    const messages = formatWhispersReport(hardened, { chain: ROBINHOOD_CHAIN, fdvCap: '$500K' });
     await sendMessages(ctx.chat.id, messages);
   } catch (err) {
     console.error('[invokerh] Error:', err);

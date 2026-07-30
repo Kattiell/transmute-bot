@@ -13,10 +13,16 @@ function envNum(name: string, fallback: number): number {
 }
 
 export const K = {
-  /** Final cut: picks must be at or below this FDV. */
-  FDV_MAX: envNum('ORACLE_V4_FDV_MAX', 150_000),
+  /** Hard final cut: picks must be at or below this FDV. */
+  FDV_MAX: envNum('ORACLE_V4_FDV_MAX', 500_000),
+  /**
+   * Ideal zone: below this FDV a pick is in the sweet spot; the
+   * FDV_IDEAL–FDV_MAX range is the FLEX BAND — accepted, but the gate demands
+   * proportionally stronger evidence for the same asymmetry score.
+   */
+  FDV_IDEAL: envNum('ORACLE_V4_FDV_IDEAL', 150_000),
   /** Stage 1 discovery band — scouts may report up to this FDV. */
-  FDV_DISCOVERY: envNum('ORACLE_V4_FDV_DISCOVERY', 500_000),
+  FDV_DISCOVERY: envNum('ORACLE_V4_FDV_DISCOVERY', 1_000_000),
   // Floors calibrated against live Robinhood Chain pool data (2026-07-30):
   // the real <$150k-FDV field on this young L2 carries $2.5k–$30k liquidity
   // (PIPECAT $29k, AEROYIELD $11k, NASDANQ $10.7k, TRAYCE $7.5k, KOSPI $2.7k).

@@ -58,7 +58,9 @@ Do NOT verify. Do NOT score. Do NOT reject on quality. Recall is the only object
 a later stage does the killing.
 
 DISCOVERY BAND: include anything with FDV up to $${K.FDV_DISCOVERY.toLocaleString('en-US')} as reported by the source.
-(The final <$${K.FDV_MAX.toLocaleString('en-US')} cut is applied later by code, not by you.)
+(The final cut is applied later by code, not by you: picks must be under
+$${K.FDV_MAX.toLocaleString('en-US')} on the LOWER of MC and FDV. The ideal zone is under
+$${K.FDV_IDEAL.toLocaleString('en-US')}; the $${K.FDV_IDEAL.toLocaleString('en-US')}–$${K.FDV_MAX.toLocaleString('en-US')} range is an accepted FLEX BAND.)
 
 Include: new deployments (<14d), tokens down >60% from ATH that are still shipping,
 tokens with rising holder count, and tokens with unusually low FDV relative to a
@@ -165,7 +167,10 @@ in the dossier. ANY "true" → DISCARD. ANY "UNVERIFIABLE" on items marked [BLOC
 - invalidation: the specific observable that would end this thesis
 - unverifiable: every item you could not verify, listed plainly
 - sub_scores: integers 0-10 for asymmetry, builder, product, distribution, catalyst,
-  attention, narrative — score ONLY from evidence cited above
+  attention, narrative — score ONLY from evidence cited above.
+  Asymmetry anchor: a real product or strong culture under $${K.FDV_IDEAL.toLocaleString('en-US')} FDV
+  earns 9-10; the $${K.FDV_IDEAL.toLocaleString('en-US')}–$${K.FDV_MAX.toLocaleString('en-US')} flex band requires
+  proportionally stronger evidence for the same score.
 - risk_0_10: overall risk (10 = uninvestable)
 
 OUTPUT: a single JSON object:
