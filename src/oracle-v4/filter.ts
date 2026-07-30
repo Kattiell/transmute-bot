@@ -14,7 +14,7 @@ import type { ScoutCandidateT } from './schemas';
 
 export interface FilterResult {
   survivors: FactsV4[];
-  dropped: { ca: string; reason: string }[];
+  dropped: { ca: string; ticker?: string; reason: string }[];
   shardFlagRate: Record<string, number>;
   confabFlags: number;
 }
@@ -56,7 +56,7 @@ export async function deterministicFilter(
   ctx: ChainContextV4,
   exclusions: string[],
 ): Promise<FilterResult> {
-  const dropped: { ca: string; reason: string }[] = [];
+  const dropped: { ca: string; ticker?: string; reason: string }[] = [];
   const survivors: FactsV4[] = [];
   const flags: Record<string, { n: number; flagged: number }> = {};
   let confabFlags = 0;
@@ -83,13 +83,13 @@ export async function deterministicFilter(
       drop('wrong_chain');
       continue;
     }
-    // 3 — existence: this single check kills every hallucinated address
+    // 3 — existence: kills hallucinated addresses. `false` is an affirmative
+    // "no contract here" from the explorer → drop. `null` means the explorer
+    // could not answer (outage/rate limit) → do NOT drop on that alone; a live
+    // DEX pair for this exact address on this chain (checked next) is itself
+    // proof of an existing contract, and an invented CA can never have one.
     const exists = await contractExists(ca, ctx);
-    if (exists === null) {
-      drop('existence_check_unavailable');
-      continue;
-    }
-    if (!exists) {
+    if (exists === false) {
       drop('no_bytecode_at_address');
       continue;
     }
@@ -97,14 +97,15 @@ export async function deterministicFilter(
     // 4 — authoritative market data
     const facts = await fetchFactsV4(ca, ctx);
     if (!facts) {
-      drop('no_live_pair_on_aggregator');
+      drop(exists === null ? 'existence_and_market_unverifiable' : 'no_live_pair_on_aggregator');
       continue;
     }
     facts.source_urls = [...new Set(group.map((g) => g.source_url).filter(Boolean))];
+    const dropWithTicker = (reason: string) => dropped.push({ ca, ticker: facts.ticker, reason });
 
     // Exclusion list applies to the VERIFIED ticker, not the claimed one.
     if (exclusions.includes(facts.ticker.toUpperCase())) {
-      drop('excluded_ticker');
+      dropWithTicker('excluded_ticker');
       continue;
     }
 
@@ -136,7 +137,7 @@ export async function deterministicFilter(
     ];
     const failed = gates.find(([ok]) => !ok);
     if (failed) {
-      drop(failed[1]);
+      dropWithTicker(failed[1]);
       continue;
     }
 

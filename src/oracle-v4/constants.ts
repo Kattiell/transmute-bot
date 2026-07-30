@@ -17,14 +17,18 @@ export const K = {
   FDV_MAX: envNum('ORACLE_V4_FDV_MAX', 150_000),
   /** Stage 1 discovery band — scouts may report up to this FDV. */
   FDV_DISCOVERY: envNum('ORACLE_V4_FDV_DISCOVERY', 500_000),
-  LIQ_MIN: envNum('ORACLE_V4_LIQ_MIN', 8_000),
-  VOL24H_MIN: envNum('ORACLE_V4_VOL24H_MIN', 5_000),
+  // Floors calibrated against live Robinhood Chain pool data (2026-07-30):
+  // the real <$150k-FDV field on this young L2 carries $2.5k–$30k liquidity
+  // (PIPECAT $29k, AEROYIELD $11k, NASDANQ $10.7k, TRAYCE $7.5k, KOSPI $2.7k).
+  // The spec's $8k/$5k suggestions were killing nearly every genuine microcap.
+  LIQ_MIN: envNum('ORACLE_V4_LIQ_MIN', 2_500),
+  VOL24H_MIN: envNum('ORACLE_V4_VOL24H_MIN', 2_000),
   /** vol24h / liq outside this band = dead pool or likely wash. */
   VOL_LIQ_MIN: 0.15,
   VOL_LIQ_MAX: 25,
-  TX24H_MIN: envNum('ORACLE_V4_TX24H_MIN', 50),
+  TX24H_MIN: envNum('ORACLE_V4_TX24H_MIN', 20),
   /** Best cheap wash-trading filter available. */
-  MAKERS24H_MIN: envNum('ORACLE_V4_MAKERS24H_MIN', 25),
+  MAKERS24H_MIN: envNum('ORACLE_V4_MAKERS24H_MIN', 10),
   TOP10_EX_LP_MAX: 0.35,
   TOP10_EX_LP_MAX_ANON: 0.25,
   CLUSTER_MAX: 0.15,

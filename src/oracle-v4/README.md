@@ -58,5 +58,8 @@ the v3 single-pass fallback.
 ## Tuning
 
 `LIQ_MIN` / `MAKERS24H_MIN` must match Robinhood Chain's actual depth — a
-threshold calibrated for Solana returns nothing on a young L2. Log the value
-distribution across the first ~20 scans, then set the constants from data.
+threshold calibrated for Solana returns nothing on a young L2. Defaults were
+calibrated 2026-07-30 against live pool data: the genuine <$150k-FDV field on
+this chain carries $2.5k–$30k liquidity, so the floors are LIQ_MIN $2.5k,
+VOL24H_MIN $2k, TX24H_MIN 20, MAKERS24H_MIN 10. Re-check the distribution as
+the chain deepens and raise them via env.

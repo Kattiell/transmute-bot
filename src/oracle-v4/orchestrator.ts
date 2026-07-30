@@ -92,7 +92,7 @@ export async function runRobinhoodScanV4(): Promise<string> {
   // Bound the expensive stages: best liquidity first.
   const queue = [...survivors].sort((a, b) => b.liq_usd - a.liq_usd).slice(0, K.MAX_GATED);
   for (const extra of survivors.filter((s) => !queue.includes(s))) {
-    dropped.push({ ca: extra.ca, reason: 'over_gate_capacity_this_scan' });
+    dropped.push({ ca: extra.ca, ticker: extra.ticker, reason: 'over_gate_capacity_this_scan' });
   }
 
   // ── STAGES 2 → 3 → 4a — per candidate, in parallel pools, never batched ──
@@ -171,28 +171,37 @@ export async function runRobinhoodScanV4(): Promise<string> {
   });
 
   // ── Vetoes, tier demotion, scoring — all in code ──
-  const rejectedAtLlm: { ca: string; ticker: string; reason: string }[] = [];
+  const rejectedAtLlm: { ca: string; ticker: string; stage: string; reason: string }[] = [];
   const picks: Pick[] = [];
 
   for (const g of gated) {
     const label = { ca: g.facts.ca, ticker: g.facts.ticker };
     if (!g.gate) {
-      rejectedAtLlm.push({ ...label, reason: 'gate_unavailable_or_timeout' });
+      rejectedAtLlm.push({ ...label, stage: 'forensic gate', reason: 'gate_unavailable_or_timeout' });
       continue;
     }
     if (g.gate.verdict === 'DISCARD') {
-      rejectedAtLlm.push({ ...label, reason: `gate: ${g.gate.discard_reason ?? 'kill-switch tripped'}` });
+      rejectedAtLlm.push({
+        ...label,
+        stage: 'forensic gate',
+        reason: g.gate.discard_reason ?? 'kill-switch tripped',
+      });
       continue;
     }
     if (g.redteam?.verdict === 'KILL' || g.redteam?.attacks.some((a) => a.severity === 'fatal')) {
       const fatal = g.redteam.attacks.find((a) => a.severity === 'fatal');
-      rejectedAtLlm.push({ ...label, reason: `red team: ${fatal?.finding ?? g.redteam.strongest_single_reason_to_pass}` });
+      rejectedAtLlm.push({
+        ...label,
+        stage: 'red team',
+        reason: fatal?.finding ?? g.redteam.strongest_single_reason_to_pass,
+      });
       continue;
     }
     // Impersonation flags on the claimed account escalate to K12/K13 → DISCARD.
     if (g.attribution?.impersonation_flags.length) {
       rejectedAtLlm.push({
         ...label,
+        stage: 'attribution',
         reason: `impersonation flags: ${g.attribution.impersonation_flags.map((f) => f.code).join(', ')}`,
       });
       continue;
@@ -204,12 +213,16 @@ export async function runRobinhoodScanV4(): Promise<string> {
 
     const dossier = g.gate.dossier;
     if (!dossier) {
-      rejectedAtLlm.push({ ...label, reason: 'gate passed without a dossier — treated as invalid output' });
+      rejectedAtLlm.push({
+        ...label,
+        stage: 'forensic gate',
+        reason: 'gate passed without a dossier — treated as invalid output',
+      });
       continue;
     }
     const scores = score(dossier.sub_scores, tier, dossier.risk_0_10, g.redteam?.verdict === 'SURVIVES');
     if (!scores.includable) {
-      rejectedAtLlm.push({ ...label, reason: `risk ${scores.risk}/10 ≥ 9 — risk veto` });
+      rejectedAtLlm.push({ ...label, stage: 'risk veto', reason: `risk ${scores.risk}/10 ≥ 9` });
       continue;
     }
     picks.push({ ...g, tier, scores });
@@ -250,7 +263,10 @@ export async function runRobinhoodScanV4(): Promise<string> {
       attribution: p.attribution,
       redteam: p.redteam,
     })),
-    rejected: [...dropped, ...rejectedAtLlm],
+    rejected: [
+      ...dropped.map((d) => ({ ...d, stage: 'deterministic filter' })),
+      ...rejectedAtLlm,
+    ],
   };
 
   const report = await grokSynthesize(
@@ -275,7 +291,7 @@ function renderFallback(bundle: {
     attribution: AttributionOutputT | null;
     redteam: RedTeamOutputT | null;
   }[];
-  rejected: ({ ca: string; reason: string } | { ca: string; ticker: string; reason: string })[];
+  rejected: { ca: string; ticker?: string; stage?: string; reason: string }[];
 }): string {
   const lines: string[] = [];
   const c = bundle.counts;
@@ -307,8 +323,8 @@ function renderFallback(bundle: {
   });
   lines.push('𓂀 REJECTED 𓂀');
   for (const r of bundle.rejected.slice(0, 20)) {
-    const t = 'ticker' in r && r.ticker ? `$${r.ticker}` : r.ca;
-    lines.push(`${t} — ${r.reason}`);
+    const t = r.ticker ? `$${r.ticker}` : r.ca;
+    lines.push(`${t} — killed at ${r.stage ?? 'scan'} by ${r.reason}`);
   }
   lines.push('');
   lines.push('𓂀 SCAN INTEGRITY 𓂀');
