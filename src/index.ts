@@ -19,6 +19,11 @@ const bot = new Telegraf(token);
 // Track active invocations to prevent spam
 const activeUsers = new Set<number>();
 
+/** Escape HTML special chars for Telegram HTML parse mode. */
+function escHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 async function sendMessages(chatId: number, messages: string[]): Promise<void> {
   for (const msg of messages) {
     if (!msg.trim()) continue;
@@ -128,10 +133,41 @@ bot.command(/^invokerh$/i, async (ctx) => {
       return;
     }
 
-    // Harden against Robinhood Chain: tool-resolve each CA (or abstain) before
-    // formatting — a model-generated address is never sent as-is (I1).
+    // Harden against Robinhood Chain: tool-resolve each CA before formatting —
+    // a model-generated address is never sent as-is (I1). Signals whose CA
+    // failed triangulation are DROPPED from the report, not rendered with a
+    // warning: an unverifiable CA is noise, and printed noise reads as a call.
     const hardened = await hardenProjectsRobinhood(projects);
-    const messages = formatWhispersReport(hardened, { chain: ROBINHOOD_CHAIN, fdvCap: '$500K' });
+    const kept = hardened.filter((h) => h.resolution.status !== 'abstained');
+    const cut = hardened.filter((h) => h.resolution.status === 'abstained');
+    if (cut.length) {
+      console.warn('[invokerh] dropped unverified signals:', cut.map((c) => `${c.ticker}: ${c.resolution.reason}`));
+    }
+
+    if (kept.length === 0) {
+      const reasons = cut
+        .slice(0, 6)
+        .map((c) => `• <b>${escHtml(c.ticker)}</b> — <i>${escHtml(c.resolution.reason ?? 'unverified')}</i>`)
+        .join('\n');
+      await ctx.reply(
+        '𓂀 The Oracle surfaced candidates, but none survived CA verification.\n\n' +
+          (reasons ? `${reasons}\n\n` : '') +
+          '<i>Every address is cross-checked against live market APIs and the chain explorer before being shown. Unverifiable ≠ opportunity.</i>',
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+
+    const messages = formatWhispersReport(kept, { chain: ROBINHOOD_CHAIN, fdvCap: '$500K' });
+    if (cut.length) {
+      messages.push(
+        `🗑 <b>Dropped at verification</b> (${cut.length})\n` +
+          cut
+            .slice(0, 6)
+            .map((c) => `• <b>${escHtml(c.ticker)}</b> — <i>${escHtml(c.resolution.reason ?? 'unverified')}</i>`)
+            .join('\n'),
+      );
+    }
     await sendMessages(ctx.chat.id, messages);
   } catch (err) {
     console.error('[invokerh] Error:', err);

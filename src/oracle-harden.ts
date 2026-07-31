@@ -50,12 +50,20 @@ function rhAbstained(p: ParsedProject, reason: string): TokenRef {
 /**
  * Robinhood Chain variant of hardenProjects. The Base resolver's stack
  * (DexScreener base-only search, BaseScan, GoPlus/honeypot.is on 8453) does not
- * cover this chain, so the CA in the narrative is used ONLY as a lookup key:
- * DexScreener → GeckoTerminal must return a live Robinhood pair for that exact
- * address (the displayed address/data come from the tool payload — I1), and the
- * tool's ticker must match the signal's, which kills wrong-token/typo CAs.
- * With no security screening available on this chain the ceiling is
- * low_confidence — never confirmed (mirrors decide()'s no_security_data rule).
+ * cover this chain, so the CA in the narrative is used ONLY as a lookup key,
+ * triangulated across TWO independent APIs before it is ever displayed:
+ *
+ *   1. DexScreener → GeckoTerminal must return a live Robinhood pair for that
+ *      exact address, and the tool's ticker must match the signal's — kills
+ *      typo'd, wrong-chain and wrong-token CAs (I1: displayed data is tool data).
+ *   2. Blockscout API v2 must know the token and agree on the symbol — kills
+ *      CAs that only "exist" inside a DEX aggregator payload. When the explorer
+ *      is unreachable the signal survives on source 1 but stays single-source.
+ *
+ * Anti-clone: the DEX-profile-declared X handle is compared to the narrative's
+ * official handle. A match is the only path to `confirmed`; without it the
+ * signal ships as low_confidence with an explicit clone warning. Liquidity
+ * below the calibrated floor abstains — a dead pool is not a signal.
  */
 export async function hardenProjectsRobinhood(projects: ParsedProject[]): Promise<HardenedProject[]> {
   const out: HardenedProject[] = [];
@@ -63,6 +71,36 @@ export async function hardenProjectsRobinhood(projects: ParsedProject[]): Promis
     out.push({ ...p, resolution: await resolveRobinhoodSignal(p) });
   }
   return out;
+}
+
+/** Floor mirrors oracle-v4 constants (calibrated 2026-07-30 on live pool data). */
+const RH_LIQ_FLOOR_USD = Number(process.env.ORACLE_V4_LIQ_MIN) || 2_500;
+
+/**
+ * Second, independent source for the CA: the chain's own explorer.
+ * Returns the explorer-reported symbol + holder count, or null when the
+ * explorer could not answer (outage / indexer lag on a young chain).
+ */
+async function blockscoutToken(ca: string): Promise<{ symbol: string | null; holders: number | null } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`https://robinhoodchain.blockscout.com/api/v2/tokens/${ca}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { symbol?: string; holders?: string; holders_count?: string };
+    const holders = Number(body.holders ?? body.holders_count ?? NaN);
+    return {
+      symbol: typeof body.symbol === 'string' && body.symbol ? body.symbol : null,
+      holders: Number.isFinite(holders) ? holders : null,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function resolveRobinhoodSignal(p: ParsedProject): Promise<TokenRef> {
@@ -73,7 +111,11 @@ async function resolveRobinhoodSignal(p: ParsedProject): Promise<TokenRef> {
       return rhAbstained(p, 'Malformed contract address in the signal — not confirmed.');
     }
 
-    const resolved = await fetchTokenSnapshot(modelCa.toLowerCase(), [ROBINHOOD_CHAIN]);
+    const ca = modelCa.toLowerCase();
+    const [resolved, explorer] = await Promise.all([
+      fetchTokenSnapshot(ca, [ROBINHOOD_CHAIN]),
+      blockscoutToken(ca),
+    ]);
     if (!resolved || resolved.chain?.key !== ROBINHOOD_CHAIN.key) {
       return rhAbstained(p, 'No live Robinhood Chain pair found for this contract.');
     }
@@ -87,9 +129,28 @@ async function resolveRobinhoodSignal(p: ParsedProject): Promise<TokenRef> {
       );
     }
 
-    // X-match: the DEX-declared X handle vs the narrative's official handles
-    // (same anti-clone signal the Base resolver uses). GeckoTerminal returns no
-    // socials, so bonding-curve-only tokens simply can't match.
+    // Source 2 — the explorer must AGREE on the symbol when it answers.
+    // Disagreement is a hard kill; silence (null) keeps the signal single-source.
+    if (explorer?.symbol && explorer.symbol.toUpperCase() !== wantSymbol) {
+      return rhAbstained(
+        p,
+        `Explorer disagrees — Blockscout reports this contract as $${explorer.symbol}, not $${wantSymbol}. Wrong or cloned CA.`,
+      );
+    }
+    const twoSources = explorer !== null;
+
+    // Dead or dust pools are not signals, whatever the narrative says.
+    if ((snap.liquidityUsd ?? 0) < RH_LIQ_FLOOR_USD) {
+      return rhAbstained(
+        p,
+        `Liquidity $${Math.round(snap.liquidityUsd ?? 0).toLocaleString('en-US')} is below the $${RH_LIQ_FLOOR_USD.toLocaleString('en-US')} floor — pool too shallow to trust or trade.`,
+      );
+    }
+
+    // TOOL-sourced socials from the DEX token profile: these are what gets
+    // displayed, never the narrative's handles. X-match against the narrative
+    // is the anti-clone signal (same as the Base resolver). GeckoTerminal
+    // returns no socials, so bonding-curve-only tokens simply can't match.
     const narrativeHandles = new Set(extractXHandles(p.fullText));
     let dexHandle: string | null = null;
     for (const s of snap.socials) {
@@ -104,20 +165,35 @@ async function resolveRobinhoodSignal(p: ParsedProject): Promise<TokenRef> {
     const flags: SecurityFlag[] = ['no_security_data'];
     if ((snap.liquidityUsd ?? 0) < 10_000) flags.push('low_liquidity');
 
+    // `confirmed` requires all three legs: live pair + explorer agreement +
+    // DEX-declared X matching the narrative's official X (anti-clone).
+    const confirmed = twoSources && socialsMatched;
+    const reason = confirmed
+      ? 'CA triangulated: live pair (DexScreener), explorer agrees (Blockscout), official X matches the DEX profile. No security screening exists for this chain — still DYOR.'
+      : socialsMatched
+        ? 'Live pair and official X matched, but the explorer could not be reached to cross-check — verify before buying.'
+        : twoSources
+          ? 'CA verified on DexScreener + Blockscout, but no official X is declared on the DEX profile to rule out a same-ticker clone — verify the project source before buying.'
+          : 'Live pair verified on one source only; explorer unreachable and no official X declared — verify before buying.';
+
     return {
       chainId: 0, // this path is keyed by ChainInfo, not a numeric id
       address: snap.address.toLowerCase(),
       symbol: snap.symbol,
       name: snap.name || undefined,
-      sources: [snap.sourceName === 'GeckoTerminal' ? 'geckoterminal' : 'dexscreener'],
+      sources: [
+        snap.sourceName === 'GeckoTerminal' ? 'geckoterminal' : 'dexscreener',
+        ...(twoSources ? ['blockscout'] : []),
+      ],
       socialsMatched,
-      confidence: socialsMatched ? 0.7 : 0.5,
+      holders: explorer?.holders ?? null,
+      confidence: confirmed ? 0.85 : socialsMatched || twoSources ? 0.6 : 0.4,
       flags,
-      status: 'low_confidence',
-      reason: socialsMatched
-        ? 'Live Robinhood pair and official X matched, but no security screening exists for this chain yet — verify before buying.'
-        : 'Live Robinhood pair verified, but the official X could not be cross-checked and this chain has no security screening — verify before buying.',
+      status: confirmed ? 'confirmed' : 'low_confidence',
+      reason,
       marketUrl: snap.url,
+      officialX: dexHandle,
+      website: snap.websites[0] ?? null,
     };
   } catch (e) {
     console.error('[oracle-harden] robinhood resolver threw — abstaining', { ticker: p.ticker, msg: (e as Error).message });

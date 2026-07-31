@@ -78,10 +78,12 @@ function contractSection(r: TokenRef, chain: ChainInfo): string {
   const marketName = /geckoterminal\.com/i.test(marketUrl) ? 'GeckoTerminal' : 'DexScreener';
   const links =
     `📈 <a href="${esc(marketUrl)}">${marketName}</a> · 🔍 <a href="${esc(chain.explorerTokenUrl(addr))}">${esc(chain.explorerName)}</a>`;
+  const sourceCount = r.sources.length > 1 ? ` (${r.sources.length} sources)` : '';
   if (r.status === 'confirmed') {
     return [
-      `✅ <b>CONTRACT — verified</b>`,
+      `✅ <b>CONTRACT — verified${sourceCount}</b>`,
       `<code>${esc(addr)}</code>`,
+      ...(r.holders != null ? [`👥 ${r.holders.toLocaleString('en-US')} holders`] : []),
       links,
       '',
     ].join('\n');
@@ -90,6 +92,7 @@ function contractSection(r: TokenRef, chain: ChainInfo): string {
     return [
       `⚠️ <b>CONTRACT — unconfirmed</b>`,
       `<code>${esc(addr)}</code>`,
+      ...(r.holders != null ? [`👥 ${r.holders.toLocaleString('en-US')} holders`] : []),
       `<i>${esc(r.reason ?? 'Verify the contract yourself before buying.')}</i>`,
       links,
       '',
@@ -167,18 +170,23 @@ export function formatProjectCard(project: HardenedProject, chain: ChainInfo = B
   // explicit "not confirmed"); NEVER the address from the model's text (I1).
   msg += contractSection(project.resolution, chain);
 
-  // Official X links (informational — these are what the resolver matched the
-  // contract against; they are social links, not the token identity). The field
-  // may be "@name", a markdown link "[@name](https://x.com/name)", or prose like
-  // "Not found after thorough search" — only a real @handle becomes a link.
+  // Links, TOOL-first: the X handle and website declared on the DEX token
+  // profile (resolver-sourced) take precedence — the model often misses or
+  // invents handles. Narrative handles only fill gaps, and only when they are
+  // a real @handle (fields may be prose like "Not found after thorough search").
   const xLinks: string[] = [];
-  const projectHandle = projectX.match(/@([A-Za-z0-9_]{2,15})/)?.[1];
+  const toolHandle = project.resolution.officialX ?? null;
+  const projectHandle = toolHandle ?? projectX.match(/@([A-Za-z0-9_]{2,15})/)?.[1];
   if (projectHandle) {
-    xLinks.push(`🐦 <a href="https://x.com/${esc(projectHandle)}">@${esc(projectHandle)}</a>`);
+    const label = toolHandle ? `@${esc(projectHandle)} <i>(DEX profile)</i>` : `@${esc(projectHandle)}`;
+    xLinks.push(`🐦 <a href="https://x.com/${esc(projectHandle)}">${label}</a>`);
   }
   const creatorHandle = creatorX.match(/@([A-Za-z0-9_]{2,15})/)?.[1];
-  if (creatorHandle) {
+  if (creatorHandle && creatorHandle !== projectHandle) {
     xLinks.push(`👤 <a href="https://x.com/${esc(creatorHandle)}">@${esc(creatorHandle)}</a>`);
+  }
+  if (project.resolution.website) {
+    xLinks.push(`🌐 <a href="${esc(project.resolution.website)}">Website</a> <i>(DEX profile)</i>`);
   }
   if (xLinks.length > 0) {
     msg += `🔗 <b>LINKS</b>\n` + xLinks.join('\n') + '\n\n';

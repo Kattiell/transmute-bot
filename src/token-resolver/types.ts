@@ -89,6 +89,11 @@ export interface TokenRef {
    *  Set by resolvers on chains DexScreener may not index (e.g. Robinhood);
    *  when absent, formatters fall back to the chain's default DexScreener URL. */
   marketUrl?: string;
+  /** Official X handle as declared in the DEX token profile (TOOL-sourced,
+   *  never from the model's narrative). Formatters prefer this for links. */
+  officialX?: string | null;
+  /** First website declared in the DEX token profile (tool-sourced). */
+  website?: string | null;
 }
 
 /** Structured, auditable log line emitted per resolution ("why this CA?"). */
