@@ -1,7 +1,7 @@
 # Token Gate — Setup Guide
 
 Transmute Oracle bot with wallet-gated premium commands.
-Premium commands (`/invoke`, `/pulse`, `/myths`, `/pearls`) require a verified wallet on Base with at least `GATE_MIN_BALANCE` tokens. `/invoke` is additionally capped at `GATE_INVOKE_DAILY_LIMIT` uses per UTC day.
+Premium commands (`/invoke`, `/invokeRH`, `/oracle`, `/pulse`, `/callnow`) require a verified wallet on Base with at least `GATE_MIN_BALANCE` tokens. `/invoke`, `/invokeRH` and `/oracle` are additionally capped at **1 use per UTC day each** (`GATE_INVOKE_DAILY_LIMIT`, `GATE_INVOKERH_DAILY_LIMIT`, `GATE_ORACLE_DAILY_LIMIT`) because they run on the paid `openai-gpt-55-pro` model.
 
 Two verification paths are supported:
 
@@ -116,10 +116,10 @@ Vercel Cron calls it with `x-vercel-cron` header. Manual trigger: `curl -H "Auth
 | `/relink` | public | Same as `/link`, for re-verification |
 | `/premium` | public | List premium commands |
 | `/unlink` | public | Remove wallet link |
-| `/invoke` | premium | Hunt microcaps — capped at `GATE_INVOKE_DAILY_LIMIT`/UTC day |
+| `/invoke` | premium | Hunt Base microcaps — capped at `GATE_INVOKE_DAILY_LIMIT`/UTC day (default 1) |
+| `/invokeRH` | premium | Hunt Robinhood Chain microcaps — capped at `GATE_INVOKERH_DAILY_LIMIT`/UTC day (default 1) |
+| `/oracle CA` | premium | Horus token revelation — capped at `GATE_ORACLE_DAILY_LIMIT`/UTC day (default 1) |
 | `/pulse` | premium | Market daily report |
-| `/myths` | premium | Narrative tracker |
-| `/pearls` | premium | Daily wisdom |
 
 ## 9. Security features
 

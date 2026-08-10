@@ -3,12 +3,12 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { Telegraf } from 'telegraf';
 import { timingSafeEqual } from 'node:crypto';
-import { invokeOracle, invokeOracleRobinhood, invokeOracleWithPrompt } from '../src/grok';
+import { invokeOracle, invokeOracleRobinhood, invokeOracleWithPrompt, invokeHorus } from '../src/grok';
 import { isOracleV4Enabled, runRobinhoodScanV4 } from '../src/oracle-v4';
 import { parseOracleOutput } from '../src/parser';
 import { hardenProjects, hardenProjectsRobinhood } from '../src/oracle-harden';
 import { formatWhispersReport, formatGenericReport } from '../src/formatter';
-import { PULSE_PROMPT, MYTHS_PROMPT, PEARLS_PROMPT, buildHorusPrompt } from '../src/prompts';
+import { PULSE_PROMPT, buildHorusPrompt } from '../src/prompts';
 import {
   identityMiddleware,
   globalRateLimitMiddleware,
@@ -145,7 +145,7 @@ bot.command('invoke', async (ctx) => {
   const from = ctx.from;
   if (!from) return;
 
-  const maxPerDay = DAILY_LIMITS.invoke ?? 3;
+  const maxPerDay = DAILY_LIMITS.invoke ?? 1;
   const link = await getWalletLink(from.id).catch(() => null);
   let usage: Awaited<ReturnType<typeof checkAndIncrementDailyUsage>>;
   try {
@@ -219,7 +219,7 @@ bot.command(/^invokerh$/i, async (ctx) => {
   const from = ctx.from;
   if (!from) return;
 
-  const maxPerDay = DAILY_LIMITS.invokerh ?? 7;
+  const maxPerDay = DAILY_LIMITS.invokerh ?? 1;
   const link = await getWalletLink(from.id).catch(() => null);
   let usage: Awaited<ReturnType<typeof checkAndIncrementDailyUsage>>;
   try {
@@ -315,28 +315,6 @@ bot.command('pulse', async (ctx) => {
   }
 });
 
-bot.command('myths', async (ctx) => {
-  try {
-    await ctx.reply('🌀 <b>Unveiling the Myths...</b>\n<i>Tracking living narratives. 1-3 minutes.</i>', { parse_mode: 'HTML' });
-    const raw = await invokeOracleWithPrompt(MYTHS_PROMPT);
-    await sendMessages(ctx.chat.id, formatGenericReport('NARRATIVE TRACKER', raw), ctx.chat.type);
-  } catch (err) {
-    console.error('[myths]', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  }
-});
-
-bot.command('pearls', async (ctx) => {
-  try {
-    await ctx.reply('💎 <b>Summoning a Pearl...</b>\n<i>The Oracle prepares a teaching. 1-2 minutes.</i>', { parse_mode: 'HTML' });
-    const raw = await invokeOracleWithPrompt(PEARLS_PROMPT);
-    await sendMessages(ctx.chat.id, formatGenericReport('PEARL OF KNOWLEDGE', raw), ctx.chat.type);
-  } catch (err) {
-    console.error('[pearls]', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  }
-});
-
 /**
  * Re-runs the wallet/balance check the premium gate middleware enforces for
  * commands. The /oracle conversational flow can complete via a plain text
@@ -393,7 +371,7 @@ async function runOracleRevelation(ctx: Context, ca: string): Promise<void> {
     return;
   }
 
-  const maxPerDay = DAILY_LIMITS.oracle ?? 5;
+  const maxPerDay = DAILY_LIMITS.oracle ?? 1;
   const link = await getWalletLink(from.id).catch(() => null);
   let usage: Awaited<ReturnType<typeof checkAndIncrementDailyUsage>>;
   try {
@@ -464,8 +442,9 @@ async function runOracleRevelation(ctx: Context, ca: string): Promise<void> {
       dexSnapshot: dexBlock,
       chain: { label: oracleChain.label, explorerName: oracleChain.explorerName },
     });
-    const raw = await invokeOracleWithPrompt(prompt);
-    console.log(`[oracle] grok done in ${Date.now() - tGrok}ms`);
+    // Horus is a paid, per-wallet-capped revelation → strong model (see grok.ts).
+    const raw = await invokeHorus(prompt);
+    console.log(`[oracle] horus done in ${Date.now() - tGrok}ms`);
 
     await sendMessages(chatId, formatGenericReport('ORACULAR REVELATION', raw), chatType);
   } catch (err) {

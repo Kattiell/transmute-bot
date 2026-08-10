@@ -57,6 +57,8 @@ export interface Candidate {
   dexXHandle: string | null;
   /** Website domains declared by the DEX for this contract. */
   dexDomains: string[];
+  /** First full website URL declared by the DEX for this contract, if any. */
+  dexWebsite?: string | null;
   /** Did the DEX-declared official X handle match the narrative's official handle? */
   socialsMatched: boolean;
   /** Present in a curated list (CoinGecko verified / etc.). */
@@ -89,9 +91,24 @@ export interface TokenRef {
    *  Set by resolvers on chains DexScreener may not index (e.g. Robinhood);
    *  when absent, formatters fall back to the chain's default DexScreener URL. */
   marketUrl?: string;
-  /** Official X handle as declared in the DEX token profile (TOOL-sourced,
-   *  never from the model's narrative). Formatters prefer this for links. */
+  /**
+   * Official X handle for this contract, TRIANGULATED across the DEX token
+   * profile, GeckoTerminal and CoinGecko — never taken from the model's text.
+   * Null when no source declared one (the signal is then cut). See xhandle.ts.
+   */
   officialX?: string | null;
+  /** Which sources reported `officialX`. Registry names ('dexscreener',
+   *  'geckoterminal', 'coingecko') or model votes prefixed 'ai:'. */
+  handleSources?: string[];
+  /** How much may be claimed about `officialX`. 'ai-resolved' and 'contested'
+   *  are model-backed only and can never accompany a `confirmed` status. */
+  handleTier?:
+    | 'cross-verified'
+    | 'ai-corroborated'
+    | 'single-source'
+    | 'ai-resolved'
+    | 'contested'
+    | 'none';
   /** First website declared in the DEX token profile (tool-sourced). */
   website?: string | null;
 }
@@ -110,4 +127,9 @@ export interface ResolutionLog {
   chosen: { address: string; confidence: number; flags: SecurityFlag[] } | null;
   decision: TokenRef['status'];
   reason?: string;
+  /** Triangulated official X handle, the sources that reported it, and how
+   *  much may be claimed about it (registry-backed vs model-backed). */
+  officialX?: string | null;
+  handleSources?: string[];
+  handleTier?: TokenRef['handleTier'];
 }

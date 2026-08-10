@@ -13,13 +13,22 @@ export const GATE_CONFIG = {
   cacheTtlSeconds: 60,
 };
 
-export const PREMIUM_COMMANDS = ['invoke', 'invokerh', 'pulse', 'myths', 'pearls', 'oracle', 'callnow'] as const;
+export const PREMIUM_COMMANDS = ['invoke', 'invokerh', 'pulse', 'oracle', 'callnow'] as const;
 export type PremiumCommand = (typeof PREMIUM_COMMANDS)[number];
 
+/**
+ * Per-UTC-day quota per Telegram user, per command. Counters are INDEPENDENT:
+ * a wallet gets 1 /invoke AND 1 /invokeRH AND 1 /oracle per day.
+ *
+ * Set to 1 because /invoke, /invokeRH and /oracle now run on gpt-5.5-pro
+ * (~$37.5/M in, ~$225/M out) — a single call is expensive enough that the old
+ * 7/day ceiling is not affordable. Wallets in `oracle_unlimited_wallets` and on
+ * the god-mode allowlist bypass this entirely (see isUnlimitedWallet).
+ */
 export const DAILY_LIMITS: Partial<Record<PremiumCommand, number>> = {
-  invoke: parseInt(process.env.GATE_INVOKE_DAILY_LIMIT || '7', 10),
-  invokerh: parseInt(process.env.GATE_INVOKERH_DAILY_LIMIT || '7', 10),
-  oracle: parseInt(process.env.GATE_ORACLE_DAILY_LIMIT || '5', 10),
+  invoke: parseInt(process.env.GATE_INVOKE_DAILY_LIMIT || '1', 10),
+  invokerh: parseInt(process.env.GATE_INVOKERH_DAILY_LIMIT || '1', 10),
+  oracle: parseInt(process.env.GATE_ORACLE_DAILY_LIMIT || '1', 10),
   callnow: parseInt(process.env.GATE_CALLNOW_DAILY_LIMIT || '3', 10),
 };
 

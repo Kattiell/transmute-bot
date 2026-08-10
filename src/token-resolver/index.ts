@@ -15,13 +15,18 @@ import { validateSecurity } from './security';
 import { decide } from './decide';
 import { sameAddress } from './address';
 import { extractIntent } from './intent';
-import { geckoTerminalHasToken, coinGeckoContract, baseScanContractInfo } from './sources';
+import { coinGeckoContract, baseScanContractInfo, geckoTerminalTokenInfo } from './sources';
+import { applyAiVerdict, needsAiLeg, triangulateXHandle } from './xhandle';
+import { resolveXHandleWithAI } from './xhandle-ai';
 import type { ParsedProject } from '../types';
 
 export type { TokenRef, GrokIntent, SecurityFlag } from './types';
+export type { XHandleVerdict, HandleTier } from './xhandle';
 export { DEFAULT_CONFIG } from './config';
 export { extractIntent } from './intent';
 export { stripModelAddresses } from './address';
+export { triangulateXHandle, applyAiVerdict, handleProvenance } from './xhandle';
+export { resolveXHandleWithAI } from './xhandle-ai';
 
 function abstained(reason: string, intent: GrokIntent): TokenRef {
   return {
@@ -34,6 +39,10 @@ function abstained(reason: string, intent: GrokIntent): TokenRef {
     flags: [],
     status: 'abstained',
     reason,
+    officialX: null,
+    handleSources: [],
+    handleTier: 'none',
+    website: null,
   };
 }
 
@@ -44,6 +53,9 @@ function emitLog(intent: GrokIntent, candidates: { chainId: number; address: str
     chosen: ref.status === 'abstained' && !ref.address ? null : { address: ref.address, confidence: ref.confidence, flags: ref.flags },
     decision: ref.status,
     reason: ref.reason,
+    officialX: ref.officialX ?? null,
+    handleSources: ref.handleSources ?? [],
+    handleTier: ref.handleTier ?? 'none',
   };
   console.log('[token-resolver]', JSON.stringify(log));
 }
@@ -69,27 +81,57 @@ export async function resolveTokenForIntent(intent: GrokIntent, config: Resolver
   // Enrich the leading candidate with independent cross-sources (bounded cost).
   // BaseScan validates existence + verified source + holders (the system-wide
   // "DexScreener → BaseScan" CA discipline); GeckoTerminal/CoinGecko add further
-  // independent confirmation of the SAME (chainId, address).
-  const [gtExists, cg, bs] = await Promise.all([
-    geckoTerminalHasToken(top.address),
+  // independent confirmation of the SAME (chainId, address) AND a second/third
+  // independent reading of the official X handle.
+  const [gt, cg, bs] = await Promise.all([
+    geckoTerminalTokenInfo(top.address),
     coinGeckoContract(top.address),
     baseScanContractInfo(top.address),
   ]);
-  if (gtExists && !top.sources.includes('geckoterminal')) top.sources.push('geckoterminal');
+  if (gt.exists && !top.sources.includes('geckoterminal')) top.sources.push('geckoterminal');
   if (bs.exists && !top.sources.includes('basescan')) top.sources.push('basescan');
   if (bs.verified) top.verifiedContract = true;
   if (bs.holders !== null) top.holders = bs.holders;
   if (cg.curated) {
     top.curated = true;
     if (!top.sources.includes('coingecko')) top.sources.push('coingecko');
-    // A curated X handle that matches the narrative also satisfies the X gate.
-    if (cg.xHandle && intent.officialXHandles.map((h) => h.toLowerCase()).includes(cg.xHandle)) {
-      top.socialsMatched = true;
-    }
+  }
+
+  // Triangulate the official @ across the three registries. The discovery
+  // model's narrative handles are passed only as a cross-check (they set
+  // `narrativeMatched`, never the handle itself) — invariant I1 for socials.
+  let handle = triangulateXHandle(
+    [
+      { source: 'dexscreener', handle: top.dexXHandle },
+      { source: 'geckoterminal', handle: gt.xHandle },
+      { source: 'coingecko', handle: cg.xHandle },
+    ],
+    intent.officialXHandles,
+  );
+
+  // Fourth leg — only when the registries left a gap or disagreed, so the
+  // common path pays nothing. Two cheap search-enabled models must agree; one
+  // of them still has native X search, which the discovery model lacks. Their
+  // answer is CORROBORATION, never proof: `applyAiVerdict` tags the result
+  // `ai-resolved` / `contested`, and `decide` refuses to mark those confirmed.
+  if (config.aiHandleFallback && needsAiLeg(handle)) {
+    const ai = await resolveXHandleWithAI({
+      address: top.address,
+      symbol: top.symbol,
+      name: top.name ?? intent.name,
+      chainLabel: 'Base',
+      marketUrl: `https://dexscreener.com/base/${top.address.toLowerCase()}`,
+      website: top.dexWebsite ?? gt.website ?? null,
+    });
+    handle = applyAiVerdict(handle, ai, intent.officialXHandles);
   }
 
   const securityFlags = await validateSecurity(top.address, config);
-  const ref = decide(top, securityFlags, config, { modelCaMatchesChosen: sameAddress(intent.modelCa, top.address) });
+  const ref = decide(top, securityFlags, config, {
+    modelCaMatchesChosen: sameAddress(intent.modelCa, top.address),
+    handle,
+    website: top.dexWebsite ?? gt.website ?? null,
+  });
 
   emitLog(
     intent,

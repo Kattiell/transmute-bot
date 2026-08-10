@@ -5,10 +5,31 @@ import { ORACLE_PROMPT, ORACLE_RH_PROMPT } from './prompts';
 // close to the original Grok path. Mirror of nous-app's src/lib/api/grok.ts.
 const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
 const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-3';
-// /invoke uses grok-4-20-multi-agent (multi-agent Grok with native realtime X
-// search for @ verification; parallel research/verify agents for deeper
-// microcap discovery), scoped separately from VENICE_MODEL (mirror of nous-app).
-const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'grok-4-20-multi-agent';
+/**
+ * PAID PATHS ONLY — /invoke, /invokeRH and /oracle (Horus) run on the strongest
+ * GPT-5.5 the provider exposes. Mirror of nous-app's src/lib/api/grok.ts.
+ * Costs ~$37.5/M in, ~$225/M out — hence the 1-per-wallet-per-day cap.
+ *
+ * TRADE-OFF: no native X/Twitter search on this family. The displayed @handle
+ * is resolved deterministically from DEX/CoinGecko/GeckoTerminal token profiles
+ * by the token-resolver, never from the model's text.
+ */
+const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'openai-gpt-55-pro';
+/**
+ * gpt-5.5-pro accepts medium|high|xhigh. `high` is the default on purpose:
+ * xhigh plus web search does not reliably finish inside the 270s Lambda
+ * ceiling. Raise via env only if measured latency leaves room.
+ */
+const ORACLE_REASONING_EFFORT = process.env.VENICE_ORACLE_EFFORT || 'high';
+
+/**
+ * Venice exposes X/Twitter search only on the Grok family (`supportsXSearch`
+ * in the model spec). Sending enable_x_search to GPT-5.5 is at best ignored
+ * and at worst a 400.
+ */
+function supportsXSearch(model: string): boolean {
+  return /^grok/i.test(model);
+}
 
 function extractTextFromGrokResponse(data: Record<string, unknown>): string {
   const texts: string[] = [];
@@ -46,17 +67,18 @@ function extractTextFromGrokResponse(data: Record<string, unknown>): string {
 }
 
 /**
- * Single chokepoint for every Grok call from this bot. The bot's callers
- * (invokeOracle, invokeOracleWithPrompt — Oracle /invoke, Pulse, Myths,
- * Pearls, Horus CA analysis) are all SOLO discovery / single-shot analysis
- * paths. None of them participate in council voting, so the security
- * constitution that wrapped this layer was producing REJECT/ABSTAIN
- * silence on microcap discovery and has been removed — the prompts are
- * sent raw, exactly as the caller authored them.
+ * Single chokepoint for every LLM call from this bot. The bot's callers
+ * (invokeOracle, invokeOracleRobinhood, invokeHorus, invokeOracleWithPrompt)
+ * are all SOLO discovery / single-shot analysis paths. None of them
+ * participate in council voting, so the security constitution that wrapped
+ * this layer was producing REJECT/ABSTAIN silence on microcap discovery and
+ * has been removed — the prompts are sent raw, exactly as authored.
  */
-async function callGrok(prompt: string, model?: string): Promise<string> {
+async function callGrok(prompt: string, model?: string, effort?: string): Promise<string> {
   const apiKey = process.env.VENICE_API_KEY;
   if (!apiKey) throw new Error('VENICE_API_KEY not configured');
+
+  const resolvedModel = model || VENICE_MODEL;
 
   // Hard-cap the Venice call so a hung API request can't silently eat the whole
   // 300s Lambda budget. 270s leaves 30s for parsing + Telegram sends.
@@ -65,7 +87,7 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const start = Date.now();
-  console.log('[grok] call start');
+  console.log(`[grok] call start model=${resolvedModel}`);
 
   try {
     const res = await fetch(VENICE_API_URL, {
@@ -75,16 +97,15 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || VENICE_MODEL,
+        model: resolvedModel,
         messages: [{ role: 'user', content: prompt }],
-        // Max reasoning effort (xhigh — deep thinking). /invoke uses fast
-        // grok-4-20 with scraping off, so xhigh fits the timeout budget.
-        reasoning: { effort: 'xhigh' },
+        reasoning: { effort: effort || 'xhigh' },
         max_completion_tokens: 64000,
-        // Mirrors Grok's always-on web_search via Venice's native web + X search.
+        // Native web search with citations. X/Twitter search rides along only
+        // on models that expose it (Grok family) — see supportsXSearch.
         venice_parameters: {
           enable_web_search: 'on',
-          enable_x_search: true,
+          ...(supportsXSearch(resolvedModel) ? { enable_x_search: true } : {}),
           enable_web_citations: true,
           // Reasoning stays ON, but strip the model's <think> blocks from the
           // response so the parser only sees the final structured output.
@@ -117,14 +138,24 @@ async function callGrok(prompt: string, model?: string): Promise<string> {
 }
 
 export async function invokeOracle(): Promise<string> {
-  return callGrok(ORACLE_PROMPT, ORACLE_INVOKE_MODEL);
+  return callGrok(ORACLE_PROMPT, ORACLE_INVOKE_MODEL, ORACLE_REASONING_EFFORT);
 }
 
-/** /invokeRH — same multi-agent model as /invoke, pointed at Robinhood mainnet. */
+/** /invokeRH — same paid model as /invoke, pointed at Robinhood mainnet. */
 export async function invokeOracleRobinhood(): Promise<string> {
-  return callGrok(ORACLE_RH_PROMPT, ORACLE_INVOKE_MODEL);
+  return callGrok(ORACLE_RH_PROMPT, ORACLE_INVOKE_MODEL, ORACLE_REASONING_EFFORT);
 }
 
+/**
+ * /oracle (Horus CA revelation) — a PAID, per-wallet-capped path, so it runs on
+ * the same strong model as /invoke rather than the cheap default. Takes the
+ * caller's fully-built Horus prompt (the CA + DexScreener ground-truth block).
+ */
+export async function invokeHorus(prompt: string): Promise<string> {
+  return callGrok(prompt, ORACLE_INVOKE_MODEL, ORACLE_REASONING_EFFORT);
+}
+
+/** Generic single-shot call on the cheap default model (non-paid paths). */
 export async function invokeOracleWithPrompt(prompt: string): Promise<string> {
   return callGrok(prompt);
 }

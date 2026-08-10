@@ -65,7 +65,10 @@ export async function resolveCandidates(intent: GrokIntent): Promise<Candidate[]
     }
 
     const dexX = dexXHandleOf(p);
-    const domains = (p.info?.websites ?? []).map((w) => domainOf(w.url)).filter((d): d is string => !!d);
+    const websiteUrls = (p.info?.websites ?? []).map((w) => w.url).filter(Boolean);
+    const domains = websiteUrls.map((u) => domainOf(u)).filter((d): d is string => !!d);
+    // Skip X/Twitter links — those are the handle, not the project's site.
+    const website = websiteUrls.find((u) => !/twitter\.com|x\.com/i.test(u)) ?? null;
     const liq = p.liquidity?.usd ?? null;
     const vol = p.volume?.h24 ?? null;
     const ageHours = p.pairCreatedAt ? Math.max(0, (Date.now() - p.pairCreatedAt) / 3_600_000) : null;
@@ -76,6 +79,7 @@ export async function resolveCandidates(intent: GrokIntent): Promise<Candidate[]
       // Merge: strongest signals win across this token's pools.
       existing.socialsMatched = existing.socialsMatched || matched;
       existing.dexXHandle = existing.dexXHandle ?? dexX;
+      existing.dexWebsite = existing.dexWebsite ?? website;
       existing.liquidityUsd = Math.max(existing.liquidityUsd ?? 0, liq ?? 0) || existing.liquidityUsd;
       existing.volume24hUsd = Math.max(existing.volume24hUsd ?? 0, vol ?? 0) || existing.volume24hUsd;
       for (const d of domains) if (!existing.dexDomains.includes(d)) existing.dexDomains.push(d);
@@ -90,6 +94,7 @@ export async function resolveCandidates(intent: GrokIntent): Promise<Candidate[]
       sources: ['dexscreener'],
       dexXHandle: dexX,
       dexDomains: domains,
+      dexWebsite: website,
       socialsMatched: matched,
       curated: false,
       verifiedContract: false,

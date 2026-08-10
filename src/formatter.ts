@@ -1,6 +1,7 @@
 import type { ParsedProject } from './types';
 import type { HardenedProject } from './oracle-harden';
 import type { TokenRef } from './token-resolver';
+import { handleProvenance } from './token-resolver';
 import { extractField, extractConviction } from './parser';
 import { BASE_CHAIN, type ChainInfo } from './chains';
 
@@ -170,23 +171,39 @@ export function formatProjectCard(project: HardenedProject, chain: ChainInfo = B
   // explicit "not confirmed"); NEVER the address from the model's text (I1).
   msg += contractSection(project.resolution, chain);
 
-  // Links, TOOL-first: the X handle and website declared on the DEX token
-  // profile (resolver-sourced) take precedence — the model often misses or
-  // invents handles. Narrative handles only fill gaps, and only when they are
-  // a real @handle (fields may be prose like "Not found after thorough search").
+  // Links, TOOL-first: the X handle and website come from the resolver's
+  // triangulation across the DEX token profile, GeckoTerminal and CoinGecko —
+  // the model (gpt-5.5-pro has no X search) never sources the handle. Narrative
+  // handles only fill gaps, and only when they are a real @handle (fields may
+  // be prose like "Not found after thorough search").
   const xLinks: string[] = [];
   const toolHandle = project.resolution.officialX ?? null;
   const projectHandle = toolHandle ?? projectX.match(/@([A-Za-z0-9_]{2,15})/)?.[1];
   if (projectHandle) {
-    const label = toolHandle ? `@${esc(projectHandle)} <i>(DEX profile)</i>` : `@${esc(projectHandle)}`;
-    xLinks.push(`🐦 <a href="https://x.com/${esc(projectHandle)}">${label}</a>`);
+    // Say plainly WHERE the handle came from. The four sources are not equally
+    // trustworthy — registries prove identity, the search-model panel only
+    // fills gaps — and a reader deciding whether to buy deserves to know which
+    // one they are looking at.
+    const provenance = toolHandle
+      ? ` <i>(${esc(handleProvenance({
+          handle: toolHandle,
+          sources: project.resolution.handleSources ?? [],
+          tier: project.resolution.handleTier ?? 'single-source',
+          conflict: false,
+          conflicting: [],
+          narrativeMatched: project.resolution.socialsMatched,
+        }))})</i>`
+      : ' <i>(from the signal — unverified)</i>';
+    xLinks.push(
+      `🐦 <a href="https://x.com/${esc(projectHandle)}">@${esc(projectHandle)}</a>${provenance}`,
+    );
   }
   const creatorHandle = creatorX.match(/@([A-Za-z0-9_]{2,15})/)?.[1];
   if (creatorHandle && creatorHandle !== projectHandle) {
     xLinks.push(`👤 <a href="https://x.com/${esc(creatorHandle)}">@${esc(creatorHandle)}</a>`);
   }
   if (project.resolution.website) {
-    xLinks.push(`🌐 <a href="${esc(project.resolution.website)}">Website</a> <i>(DEX profile)</i>`);
+    xLinks.push(`🌐 <a href="${esc(project.resolution.website)}">Website</a> <i>(token profile)</i>`);
   }
   if (xLinks.length > 0) {
     msg += `🔗 <b>LINKS</b>\n` + xLinks.join('\n') + '\n\n';
@@ -246,7 +263,7 @@ export function formatWhispersReport(
   return messages;
 }
 
-/** Format generic reports (pulse, myths, pearls) with markdown-to-HTML conversion */
+/** Format generic reports (pulse, Horus revelation) with markdown-to-HTML conversion */
 export function formatGenericReport(title: string, raw: string): string[] {
   const messages: string[] = [];
 

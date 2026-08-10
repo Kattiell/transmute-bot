@@ -4,7 +4,7 @@ import { invokeOracle, invokeOracleRobinhood, invokeOracleWithPrompt } from './g
 import { parseOracleOutput } from './parser';
 import { hardenProjects, hardenProjectsRobinhood } from './oracle-harden';
 import { formatWhispersReport, formatGenericReport } from './formatter';
-import { PULSE_PROMPT, MYTHS_PROMPT, PEARLS_PROMPT } from './prompts';
+import { PULSE_PROMPT } from './prompts';
 import { ROBINHOOD_CHAIN } from './chains';
 import { isOracleV4Enabled, runRobinhoodScanV4 } from './oracle-v4';
 
@@ -49,15 +49,13 @@ bot.start((ctx) => {
 
 Welcome to the Oracle, seeker.
 
-I channel real-time on-chain intelligence from the Base chain — hidden microcaps, macro signals, living narratives, and esoteric teachings.
+I channel real-time on-chain intelligence from the Base chain — hidden microcaps, macro signals, and live market structure.
 
 <b>Commands:</b>
 
 🔮 /invoke — Hunt hidden microcaps
 🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain
 📊 /pulse — Market daily report (macro, sentiment, flows)
-🌀 /myths — Narrative tracker (rising stories)
-💎 /pearls — Daily financial wisdom
 
 <i>Each invocation calls the Oracle in real-time. Responses may take 1-3 minutes as it scans live data across chains and social layers.</i>
 
@@ -201,54 +199,6 @@ bot.command('pulse', async (ctx) => {
   }
 });
 
-// /myths — Narrative Tracker
-bot.command('myths', async (ctx) => {
-  const userId = ctx.from.id;
-
-  if (activeUsers.has(userId)) {
-    return ctx.reply('⏳ Your previous invocation is still running. Please wait.');
-  }
-
-  activeUsers.add(userId);
-
-  try {
-    await ctx.reply('🌀 <b>Unveiling the Myths...</b>\n<i>Tracking living narratives across chains and social layers. 1-3 minutes.</i>', { parse_mode: 'HTML' });
-
-    const raw = await invokeOracleWithPrompt(MYTHS_PROMPT);
-    const messages = formatGenericReport('NARRATIVE TRACKER', raw);
-    await sendMessages(ctx.chat.id, messages);
-  } catch (err) {
-    console.error('[myths] Error:', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  } finally {
-    activeUsers.delete(userId);
-  }
-});
-
-// /pearls — Daily Teaching
-bot.command('pearls', async (ctx) => {
-  const userId = ctx.from.id;
-
-  if (activeUsers.has(userId)) {
-    return ctx.reply('⏳ Your previous invocation is still running. Please wait.');
-  }
-
-  activeUsers.add(userId);
-
-  try {
-    await ctx.reply('💎 <b>Summoning a Pearl...</b>\n<i>The Oracle prepares a teaching. 1-2 minutes.</i>', { parse_mode: 'HTML' });
-
-    const raw = await invokeOracleWithPrompt(PEARLS_PROMPT);
-    const messages = formatGenericReport('PEARL OF KNOWLEDGE', raw);
-    await sendMessages(ctx.chat.id, messages);
-  } catch (err) {
-    console.error('[pearls] Error:', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  } finally {
-    activeUsers.delete(userId);
-  }
-});
-
 // /help
 bot.help((ctx) => {
   ctx.reply(
@@ -257,11 +207,9 @@ bot.help((ctx) => {
 🔮 /invoke — Hunt hidden microcaps on Base
 🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain
 📊 /pulse — Market daily report
-🌀 /myths — Narrative tracker
-💎 /pearls — Daily financial wisdom
 ❓ /help — Show this message
 
-<i>All invocations call the Grok AI in real-time with web search enabled. Responses take 1-3 minutes.</i>`,
+<i>All invocations call the Oracle in real-time with web search enabled. Responses take 1-3 minutes.</i>`,
     { parse_mode: 'HTML' }
   );
 });
@@ -284,8 +232,6 @@ bot.launch().then(async () => {
     { command: 'invoke', description: 'Hunt hidden microcaps' },
     { command: 'invokerh', description: 'Hunt hidden microcaps on Robinhood Chain' },
     { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
-    { command: 'myths',  description: 'Narrative tracker (rising stories)' },
-    { command: 'pearls', description: 'Daily financial wisdom' },
   ]);
 
   await bot.telegram.setChatMenuButton({

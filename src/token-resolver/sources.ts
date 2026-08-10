@@ -40,6 +40,56 @@ export async function geckoTerminalHasToken(address: string): Promise<boolean> {
   return !!json?.data?.attributes?.address;
 }
 
+export interface GeckoTerminalInfo {
+  /** GeckoTerminal has a token-info record for this exact address. */
+  exists: boolean;
+  /** X/Twitter handle GeckoTerminal has on file (lowercased, no '@'), or null. */
+  xHandle: string | null;
+  /** First website GeckoTerminal has on file, or null. */
+  website: string | null;
+}
+
+/**
+ * GeckoTerminal token-info lookup — the THIRD independent source of the
+ * official X handle (after the DEX token profile and CoinGecko).
+ *
+ * This is the one that matters for young tokens: DexScreener only carries
+ * `info.socials` once the team pays for / claims the profile, so a freshly
+ * launched microcap frequently has no DEX-declared handle at all while
+ * GeckoTerminal already indexed one. Free tier, no key, ~30 req/min.
+ *
+ * Fail-closed like every other source: an error, a timeout or a miss returns
+ * "this source confirms nothing" — never a guess.
+ */
+export async function geckoTerminalTokenInfo(address: string): Promise<GeckoTerminalInfo> {
+  const none: GeckoTerminalInfo = { exists: false, xHandle: null, website: null };
+  const json = (await getJson(
+    `${GECKO_BASE}/networks/base/tokens/${address.toLowerCase()}/info`,
+  )) as
+    | {
+        data?: {
+          attributes?: {
+            address?: string;
+            twitter_handle?: string | null;
+            websites?: string[] | null;
+          };
+        };
+      }
+    | null;
+
+  const attrs = json?.data?.attributes;
+  if (!attrs?.address) return none;
+
+  const raw = attrs.twitter_handle;
+  const xHandle =
+    typeof raw === 'string' && raw.trim()
+      ? raw.trim().replace(/^@/, '').toLowerCase()
+      : null;
+  const website = Array.isArray(attrs.websites) ? (attrs.websites.find(Boolean) ?? null) : null;
+
+  return { exists: true, xHandle, website };
+}
+
 export interface CoinGeckoInfo {
   /** Listed on CoinGecko for Base = a curated/verified signal. */
   curated: boolean;

@@ -8,7 +8,7 @@
  */
 
 import type { ParsedProject } from './types';
-import { resolveTokenFromSignal, type TokenRef } from './token-resolver';
+import { DEFAULT_CONFIG, resolveTokenFromSignal, type TokenRef } from './token-resolver';
 import type { SecurityFlag } from './token-resolver';
 import { firstModelEvmAddress, isValidEvmAddress } from './token-resolver/address';
 import { extractXHandles, xHandleFromUrl } from './token-resolver/intent';
@@ -19,13 +19,47 @@ export interface HardenedProject extends ParsedProject {
   resolution: TokenRef;
 }
 
+/**
+ * Wall-clock ceiling for the OPTIONAL @handle model panel across one hardening
+ * pass — not for hardening itself.
+ *
+ * Why it exists: this runs sequentially, once per signal, immediately after a
+ * discovery call that may already have spent most of the 300s Lambda budget.
+ * The panel fires on the gap path, which for young microcaps is the common
+ * case, so 6 signals could add minutes and the report would never be sent.
+ * Once the budget is spent, remaining signals resolve registry-only —
+ * degraded, never slower.
+ */
+const AI_HANDLE_BUDGET_MS = (() => {
+  const n = parseInt(process.env.RESOLVER_AI_HANDLE_BUDGET_MS || '60000', 10);
+  return Number.isFinite(n) && n >= 0 ? n : 60_000;
+})();
+
+const CONFIG_NO_AI = { ...DEFAULT_CONFIG, aiHandleFallback: false };
+
 /** Resolve sequentially to stay gentle on the public data/security APIs. */
 export async function hardenProjects(projects: ParsedProject[]): Promise<HardenedProject[]> {
   const out: HardenedProject[] = [];
+  const startedAt = Date.now();
+  let aiBudgetExhausted = false;
+
   for (const p of projects) {
+    // Spend the model panel on the earliest signals; once the budget is gone
+    // the rest resolve registry-only so the report still gets sent.
+    const spent = Date.now() - startedAt;
+    const allowAi = spent < AI_HANDLE_BUDGET_MS;
+    if (!allowAi && !aiBudgetExhausted) {
+      aiBudgetExhausted = true;
+      console.warn('[oracle-harden] @handle model panel budget spent', {
+        afterMs: spent,
+        resolvedSoFar: out.length,
+        remaining: projects.length - out.length,
+      });
+    }
+
     let resolution: TokenRef;
     try {
-      resolution = await resolveTokenFromSignal(p);
+      resolution = await resolveTokenFromSignal(p, allowAi ? DEFAULT_CONFIG : CONFIG_NO_AI);
     } catch (e) {
       // Fail-closed (I4): any resolver crash → abstain, never trust the model CA.
       console.error('[oracle-harden] resolver threw — abstaining', { ticker: p.ticker, msg: (e as Error).message });
@@ -44,6 +78,7 @@ function rhAbstained(p: ParsedProject, reason: string): TokenRef {
   return {
     chainId: 0, address: '', symbol: p.ticker.replace(/^\$/, ''), sources: [],
     socialsMatched: false, confidence: 0, flags: [], status: 'abstained', reason,
+    officialX: null, handleSources: [], website: null,
   };
 }
 
@@ -161,6 +196,10 @@ async function resolveRobinhoodSignal(p: ParsedProject): Promise<TokenRef> {
       }
     }
     const socialsMatched = !!dexHandle && narrativeHandles.has(dexHandle);
+    // Robinhood Chain has one social registry, not three, so a handle here is
+    // always single-source. Naming it lets the formatter say so instead of
+    // implying the cross-verification the Base path performs.
+    const handleSource = snap.sourceName === 'GeckoTerminal' ? 'geckoterminal' : 'dexscreener';
 
     const flags: SecurityFlag[] = ['no_security_data'];
     if ((snap.liquidityUsd ?? 0) < 10_000) flags.push('low_liquidity');
@@ -193,6 +232,7 @@ async function resolveRobinhoodSignal(p: ParsedProject): Promise<TokenRef> {
       reason,
       marketUrl: snap.url,
       officialX: dexHandle,
+      handleSources: dexHandle ? [handleSource] : [],
       website: snap.websites[0] ?? null,
     };
   } catch (e) {

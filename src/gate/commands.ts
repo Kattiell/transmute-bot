@@ -1,5 +1,5 @@
 import type { Telegraf, Context } from 'telegraf';
-import { GATE_CONFIG, isExemptWallet } from './config';
+import { DAILY_LIMITS, GATE_CONFIG, isExemptWallet } from './config';
 import { buildLinkUrl } from './auth';
 import {
   createNonce,
@@ -17,6 +17,14 @@ import { hashCode, maskCode, normalizeCode } from './codes';
 
 function maskAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+/** Per-day quota for a premium command, rendered for help/menu copy. Reads
+ *  DAILY_LIMITS so the advertised number can never drift from what the gate
+ *  actually enforces. */
+function quota(cmd: keyof typeof DAILY_LIMITS): string {
+  const n = DAILY_LIMITS[cmd];
+  return n === undefined ? '' : `${n}/day`;
 }
 
 function humanizeTtl(isoUntil: string): string {
@@ -184,11 +192,11 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       `Wallet: <code>${maskAddress(row.wallet_address)}</code>\n` +
       `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
       `Session: <b>${GATE_CONFIG.sessionDurationDays} days</b>\n\n` +
-      `🔮 /invoke — hunt hidden microcaps (max 7/day, resets at 00:00 UTC)\n` +
-      `🪶 /invokeRH — hunt Robinhood Chain microcaps (max 7/day)\n` +
-      `𓂀 /oracle CA — reveal any Base or Robinhood token (max 5/day)\n` +
+      `🔮 /invoke — hunt hidden microcaps (max ${quota('invoke')}, resets at 00:00 UTC)\n` +
+      `🪶 /invokeRH — hunt Robinhood Chain microcaps (max ${quota('invokerh')})\n` +
+      `𓂀 /oracle CA — reveal any Base or Robinhood token (max ${quota('oracle')})\n` +
       `🏛 /callnow — submit a call · 🏆 /gods 7d — leaderboard\n` +
-      `📊 /pulse · 🌀 /myths · 💎 /pearls also available.\n\n` +
+      `📊 /pulse also available.\n\n` +
       `<i>Generate a new code anytime in the Transmute App — it will replace this one.</i>`,
     { parse_mode: 'HTML' },
   );
@@ -271,9 +279,7 @@ export function registerGateCommands(bot: Telegraf): void {
         `𓂀 /oracle CA — Reveal any Base or Robinhood token by contract address\n` +
         `🏛 /callnow — Submit a call to the Pantheon\n` +
         `🏆 /gods 7d — Pantheon leaderboard\n` +
-        `📊 /pulse — Market daily report\n` +
-        `🌀 /myths — Narrative tracker\n` +
-        `💎 /pearls — Daily financial wisdom\n\n` +
+        `📊 /pulse — Market daily report\n\n` +
         `<i>${footer}</i>`,
       { parse_mode: 'HTML' }
     );
@@ -311,9 +317,7 @@ export async function handleStart(ctx: Context): Promise<void> {
             `𓂀 /oracle CA — Reveal any Base or Robinhood token\n` +
             `🏛 /callnow — Submit a call to the Pantheon\n` +
             `🏆 /gods 7d — Pantheon leaderboard\n` +
-            `📊 /pulse — Market daily report\n` +
-            `🌀 /myths — Narrative tracker\n` +
-            `💎 /pearls — Daily wisdom\n\n` +
+            `📊 /pulse — Market daily report\n\n` +
             `<i>/verify · /help · /unlink</i>`,
           { parse_mode: 'HTML' }
         );
@@ -327,11 +331,11 @@ export async function handleStart(ctx: Context): Promise<void> {
   const header =
     link && isLinkExpired(link)
       ? `<b>𓂀 TRANSMUTE ORACLE</b>\n\n⏰ Your verification expired — let's relink.\n\n`
-      : `<b>𓂀 TRANSMUTE ORACLE</b>\n\nWelcome, seeker. I channel real-time on-chain intelligence on Base — hidden microcaps, macro signals, living narratives, esoteric teachings.\n\n`;
+      : `<b>𓂀 TRANSMUTE ORACLE</b>\n\nWelcome, seeker. I channel real-time on-chain intelligence on Base — hidden microcaps, macro signals, live market structure.\n\n`;
 
   const body =
     `<b>Access is token-gated.</b> Hold at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> in a Base wallet to unlock:\n\n` +
-    `🔮 /invoke (7/day) · 🪶 /invokeRH (7/day) · 📊 /pulse · 🌀 /myths · 💎 /pearls\n\n` +
+    `🔮 /invoke (${quota('invoke')}) · 🪶 /invokeRH (${quota('invokerh')}) · 𓂀 /oracle (${quota('oracle')}) · 📊 /pulse\n\n` +
     `Two ways to verify:\n` +
     `• 🎟 Generate a weekly code in the Transmute App, then send <code>/verify CODE</code>\n` +
     `• 🔗 Tap the button below to sign via browser (no gas, just an ownership signature).\n\n` +
@@ -351,14 +355,12 @@ export function buildHelpMessage(): string {
     `✨ /premium — List premium commands\n` +
     `🗑 /unlink — Remove wallet\n\n` +
     `<b>Premium (requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE):</b>\n` +
-    `🔮 /invoke — Hunt hidden microcaps on Base (max 7/day, resets 00:00 UTC)\n` +
-    `🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain (max 7/day)\n` +
-    `𓂀 /oracle CA — Reveal any Base or Robinhood token (max 5/day)\n` +
-    `🏛 /callnow — Submit a call to the Pantheon (max 3/day, 6h cooldown)\n` +
+    `🔮 /invoke — Hunt hidden microcaps on Base (max ${quota('invoke')}, resets 00:00 UTC)\n` +
+    `🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain (max ${quota('invokerh')})\n` +
+    `𓂀 /oracle CA — Reveal any Base or Robinhood token (max ${quota('oracle')})\n` +
+    `🏛 /callnow — Submit a call to the Pantheon (max ${quota('callnow')}, 6h cooldown)\n` +
     `🏆 /gods 7d — Pantheon leaderboard (also 30d / all)\n` +
-    `📊 /pulse — Market daily report\n` +
-    `🌀 /myths — Narrative tracker\n` +
-    `💎 /pearls — Daily wisdom\n\n` +
+    `📊 /pulse — Market daily report\n\n` +
     `<b>Calls & flex (free):</b>\n` +
     `📟 Post a Base CA in a group — the Oracle replies with a live stats card\n` +
     `🎴 /flex [CA] — Mint a flexcard image of a tracked call\n\n` +

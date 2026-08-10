@@ -72,8 +72,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           { command: 'gods',    description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
           { command: 'flex',    description: 'Mint a flexcard of a tracked call' },
           { command: 'pulse',   description: 'Market daily report (macro, sentiment, flows)' },
-          { command: 'myths',   description: 'Narrative tracker (rising stories)' },
-          { command: 'pearls',  description: 'Daily financial wisdom' },
           { command: 'optout',  description: 'Stop receiving Pantheon DMs' },
           { command: 'optin',   description: 'Re-enable Pantheon DMs' },
           { command: 'cancel',  description: 'Cancel an in-progress wizard' },
