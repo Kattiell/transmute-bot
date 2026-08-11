@@ -6,21 +6,27 @@ import { ORACLE_PROMPT, ORACLE_RH_PROMPT } from './prompts';
 const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
 const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-3';
 /**
- * PAID PATHS ONLY — /invoke, /invokeRH and /oracle (Horus) run on the strongest
- * GPT-5.5 the provider exposes. Mirror of nous-app's src/lib/api/grok.ts.
- * Costs ~$37.5/M in, ~$225/M out — hence the 1-per-wallet-per-day cap.
+ * PAID PATHS ONLY — /invoke, /invokeRH and /oracle (Horus).
+ * Mirror of nous-app's src/lib/api/grok.ts.
  *
- * TRADE-OFF: no native X/Twitter search on this family. The displayed @handle
- * is resolved deterministically from DEX/CoinGecko/GeckoTerminal token profiles
- * by the token-resolver, never from the model's text.
+ * `grok-4-5`: 500K ctx, 32K max output, native web AND X search.
+ * Replaced gpt-5.5-pro, which billed ~$225/M output (reasoning tokens are
+ * billed as output) — ~$3 per /invoke, up to ~$15. This is ~29x cheaper.
+ *
+ * Cheaper AND a better fit is available: `grok-4-20-multi-agent` ($1.42/$2.83
+ * per M, 2M ctx, 128K out) is described as parallel agents doing deep
+ * research, which is this workload; grok-4-5 is described as a coding model.
+ * Switch via VENICE_ORACLE_MODEL — no deploy needed.
  */
-const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'openai-gpt-55-pro';
+const ORACLE_INVOKE_MODEL = process.env.VENICE_ORACLE_MODEL || 'grok-4-5';
 /**
- * gpt-5.5-pro accepts medium|high|xhigh. `high` is the default on purpose:
- * xhigh plus web search does not reliably finish inside the 270s Lambda
- * ceiling. Raise via env only if measured latency leaves room.
+ * grok-4-5 accepts low|medium|high ONLY — `xhigh` is not valid for it.
  */
 const ORACLE_REASONING_EFFORT = process.env.VENICE_ORACLE_EFFORT || 'high';
+
+/** Smallest max-output across the models routed here (grok-4-5 / grok-4-3 cap
+ *  at 32K). Was 64000, which exceeded them. Also caps cost per call. */
+const MAX_COMPLETION_TOKENS = parseInt(process.env.VENICE_MAX_OUTPUT_TOKENS || '32000', 10);
 
 /**
  * Venice exposes X/Twitter search only on the Grok family (`supportsXSearch`
@@ -100,7 +106,7 @@ async function callGrok(prompt: string, model?: string, effort?: string): Promis
         model: resolvedModel,
         messages: [{ role: 'user', content: prompt }],
         reasoning: { effort: effort || 'xhigh' },
-        max_completion_tokens: 64000,
+        max_completion_tokens: MAX_COMPLETION_TOKENS,
         // Native web search with citations. X/Twitter search rides along only
         // on models that expose it (Grok family) — see supportsXSearch.
         venice_parameters: {

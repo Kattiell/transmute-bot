@@ -5,11 +5,15 @@
  * Policy (owner-mandated): a contract with NO official X (Twitter) profile tied
  * to it is CUT — never confirmed.
  *
- * HOW THAT POLICY IS ENFORCED CHANGED with the move to `openai-gpt-55-pro`.
- * The old gate compared the DEX-declared handle against the @ the MODEL wrote
- * in its narrative; that only worked because Grok had native X search to look
- * the handle up. GPT-5.5 has web search but no X search, so a
- * narrative-dependent gate would abstain on nearly everything.
+ * HOW THAT POLICY IS ENFORCED CHANGED. The old gate compared the DEX-declared
+ * handle against the @ the MODEL wrote in its narrative — it trusted the model
+ * to have looked the handle up. That broke outright on a model without X
+ * search, which is what forced the redesign.
+ *
+ * The discovery model has since moved back to a Grok (X search available
+ * again), but the gate stays tool-vs-tool ON PURPOSE: a handle the model
+ * "found" is still model output, and the whole point of I1 is that the
+ * identity shown to users comes from an API payload, never generated text.
  *
  * The gate is now tool-vs-tool (see `xhandle.ts`): the handle must be declared
  * by at least one independent registry (DEX token profile / GeckoTerminal /

@@ -1,7 +1,7 @@
 # Token Gate — Setup Guide
 
 Transmute Oracle bot with wallet-gated premium commands.
-Premium commands (`/invoke`, `/invokeRH`, `/oracle`, `/pulse`, `/callnow`) require a verified wallet on Base with at least `GATE_MIN_BALANCE` tokens. `/invoke`, `/invokeRH` and `/oracle` are additionally capped at **1 use per UTC day each** (`GATE_INVOKE_DAILY_LIMIT`, `GATE_INVOKERH_DAILY_LIMIT`, `GATE_ORACLE_DAILY_LIMIT`) because they run on the paid `openai-gpt-55-pro` model.
+Premium commands (`/invoke`, `/invokeRH`, `/oracle`, `/pulse`, `/callnow`) require a verified wallet on Base with at least `GATE_MIN_BALANCE` tokens. `/invoke`, `/invokeRH` and `/oracle` are additionally capped at **1 use per UTC day each** (`GATE_INVOKE_DAILY_LIMIT`, `GATE_INVOKERH_DAILY_LIMIT`, `GATE_ORACLE_DAILY_LIMIT`) because they run on the paid Oracle model (`grok-4-5` by default).
 
 Two verification paths are supported:
 
