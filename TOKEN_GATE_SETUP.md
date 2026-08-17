@@ -19,6 +19,14 @@ Three verification paths are supported:
 
 ## 1. Run the migrations
 
+> **The `supabase-migration-*.sql` files are gitignored and NOT in this repo.**
+> They are applied by hand through the Supabase SQL Editor, so the repo was only
+> ever their distribution path — and publishing them hands out the schema (table
+> names, columns, constraints, RLS posture). They live in the project owner's
+> working copy; every filename below is a local path, not something you clone.
+> The same applies to `.env.example`: read the variable names from the Vercel
+> dashboard or from the `process.env` reads in the code.
+
 In Supabase SQL Editor, run both in order:
 
 1. `transmute-bot/supabase-migration-telegram-gate.sql` (if not applied)
