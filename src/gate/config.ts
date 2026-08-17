@@ -13,21 +13,28 @@ export const GATE_CONFIG = {
   cacheTtlSeconds: 60,
 };
 
-export const PREMIUM_COMMANDS = ['invoke', 'invokerh', 'pulse', 'oracle', 'callnow'] as const;
+/**
+ * Commands behind the $TRANSMUTE balance gate.
+ *
+ * `invoke` / `invokerh` were REMOVED: the Oracle hunt is systemic now — the
+ * admin runs one dual-chain sweep in the Transmute App and every holder gets
+ * the broadcast on their timeline. Removing them from this list is what makes
+ * the premium middleware reject the commands rather than gate them, so a
+ * lingering client-side shortcut can no longer reach a handler that is gone.
+ */
+export const PREMIUM_COMMANDS = ['pulse', 'oracle', 'callnow'] as const;
 export type PremiumCommand = (typeof PREMIUM_COMMANDS)[number];
 
 /**
  * Per-UTC-day quota per Telegram user, per command. Counters are INDEPENDENT:
- * a wallet gets 1 /invoke AND 1 /invokeRH AND 1 /oracle per day.
+ * a wallet gets 1 /oracle AND 3 /callnow per day, not 1 total.
  *
- * Set to 1 because /invoke, /invokeRH and /oracle now run on gpt-5.5-pro
- * (~$37.5/M in, ~$225/M out) — a single call is expensive enough that the old
- * 7/day ceiling is not affordable. Wallets in `oracle_unlimited_wallets` and on
- * the god-mode allowlist bypass this entirely (see isUnlimitedWallet).
+ * Set to 1 because /oracle runs on an expensive reasoning model — a single call
+ * is costly enough that the old 7/day ceiling is not affordable. Wallets in
+ * `oracle_unlimited_wallets` and on the god-mode allowlist bypass this entirely
+ * (see isUnlimitedWallet).
  */
 export const DAILY_LIMITS: Partial<Record<PremiumCommand, number>> = {
-  invoke: parseInt(process.env.GATE_INVOKE_DAILY_LIMIT || '1', 10),
-  invokerh: parseInt(process.env.GATE_INVOKERH_DAILY_LIMIT || '1', 10),
   oracle: parseInt(process.env.GATE_ORACLE_DAILY_LIMIT || '1', 10),
   callnow: parseInt(process.env.GATE_CALLNOW_DAILY_LIMIT || '3', 10),
 };
@@ -48,9 +55,12 @@ export function isAdmin(telegramId: number | undefined | null): boolean {
 
 /**
  * God-mode wallet allowlist. Wallets here bypass the $TRANSMUTE balance gate
- * (premium commands + code redeem) AND every premium daily limit (/invoke,
- * /oracle, ...). Mirrored in `nous-app/src/lib/gate-exempt.ts`, which applies the
+ * (premium commands + code redeem) AND every premium daily limit (/oracle,
+ * /callnow). Mirrored in `nous-app/src/lib/gate-exempt.ts`, which applies the
  * same list to the site + arena gates. Keep both in sync.
+ *
+ * NOT honoured by the site's systemic invoke cap — that one is a blast-radius
+ * bound on an admin-only endpoint, so it survives the grant on purpose.
  *
  * Source of truth: GATE_EXEMPT_WALLETS env (comma-separated, any case). Defaults
  * are public on-chain addresses, so hardcoding them is safe. Privilege grant, not

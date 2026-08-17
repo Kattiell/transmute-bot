@@ -1,17 +1,15 @@
-import { ORACLE_PROMPT, ORACLE_RH_PROMPT } from './prompts';
-
 // Venice.ai inference (OpenAI-compatible). Routes through Venice instead of
 // xAI directly; the `grok-4-3` model keeps behavior (native web + X search)
 // close to the original Grok path. Mirror of nous-app's src/lib/api/grok.ts.
 const VENICE_API_URL = `${process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'}/chat/completions`;
 const VENICE_MODEL = process.env.VENICE_MODEL || 'grok-4-3';
 /**
- * PAID PATHS ONLY — /invoke, /invokeRH and /oracle (Horus).
+ * PAID PATHS ONLY — /oracle (Horus) is the only one left in the bot.
  * Mirror of nous-app's src/lib/api/grok.ts.
  *
  * `grok-4-5`: 500K ctx, 32K max output, native web AND X search.
  * Replaced gpt-5.5-pro, which billed ~$225/M output (reasoning tokens are
- * billed as output) — ~$3 per /invoke, up to ~$15. This is ~29x cheaper.
+ * billed as output) — ~$3 per call, up to ~$15. This is ~29x cheaper.
  *
  * Cheaper AND a better fit is available: `grok-4-20-multi-agent` ($1.42/$2.83
  * per M, 2M ctx, 128K out) is described as parallel agents doing deep
@@ -143,19 +141,20 @@ async function callGrok(prompt: string, model?: string, effort?: string): Promis
   }
 }
 
-export async function invokeOracle(): Promise<string> {
-  return callGrok(ORACLE_PROMPT, ORACLE_INVOKE_MODEL, ORACLE_REASONING_EFFORT);
-}
-
-/** /invokeRH — same paid model as /invoke, pointed at Robinhood mainnet. */
-export async function invokeOracleRobinhood(): Promise<string> {
-  return callGrok(ORACLE_RH_PROMPT, ORACLE_INVOKE_MODEL, ORACLE_REASONING_EFFORT);
-}
+// `invokeOracle()` and `invokeOracleRobinhood()` were REMOVED along with the
+// /invoke and /invokeRH commands. The discovery hunt is systemic now — the
+// admin runs one dual-chain sweep in the Transmute App and every holder gets
+// the broadcast. Leaving callable discovery entry points here would let a
+// future handler quietly re-open a paid per-user hunt from Telegram.
+//
+// The prompt bodies (ORACLE_PROMPT / ORACLE_RH_PROMPT) stay in prompts.ts: they
+// are byte-mirrors of the site's prompts kept for diffing, and ORACLE_RH_PROMPT
+// is still the v3 fallback inside the oracle-v4 pipeline.
 
 /**
  * /oracle (Horus CA revelation) — a PAID, per-wallet-capped path, so it runs on
- * the same strong model as /invoke rather than the cheap default. Takes the
- * caller's fully-built Horus prompt (the CA + DexScreener ground-truth block).
+ * the strong model rather than the cheap default. Takes the caller's fully-built
+ * Horus prompt (the CA + DexScreener ground-truth block).
  */
 export async function invokeHorus(prompt: string): Promise<string> {
   return callGrok(prompt, ORACLE_INVOKE_MODEL, ORACLE_REASONING_EFFORT);

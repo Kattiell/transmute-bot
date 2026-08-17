@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getMiniAppUrl } from '../src/miniapp';
 
 /**
  * GET /api/set-webhook?secret=YOUR_SECRET
@@ -65,8 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         commands: [
           { command: 'start',   description: 'Start main menu' },
-          { command: 'invoke',  description: 'Hunt hidden microcaps' },
-          { command: 'invokerh', description: 'Hunt hidden microcaps on Robinhood Chain' },
+          { command: 'app',     description: 'Open the Transmute App' },
           { command: 'oracle',  description: 'Reveal a token by its contract address' },
           { command: 'callnow', description: 'Submit a token call to the Pantheon' },
           { command: 'gods',    description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
@@ -80,13 +80,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   );
 
+  // The persistent button next to the composer. With the Mini App configured it
+  // becomes a one-tap launcher — the shortest path from "opened the chat" to
+  // "reading signals". Falls back to the command list so it is never dead.
+  const miniAppUrl = getMiniAppUrl();
   const menuRes = await fetch(
     `https://api.telegram.org/bot${token}/setChatMenuButton`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        menu_button: { type: 'commands' },
+        menu_button: miniAppUrl
+          ? { type: 'web_app', text: 'Transmute', web_app: { url: miniAppUrl } }
+          : { type: 'commands' },
       }),
     }
   );

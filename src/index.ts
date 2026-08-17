@@ -1,12 +1,9 @@
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
-import { invokeOracle, invokeOracleRobinhood, invokeOracleWithPrompt } from './grok';
-import { parseOracleOutput } from './parser';
-import { hardenProjects, hardenProjectsRobinhood } from './oracle-harden';
-import { formatWhispersReport, formatGenericReport } from './formatter';
+import { invokeOracleWithPrompt } from './grok';
+import { formatGenericReport } from './formatter';
 import { PULSE_PROMPT } from './prompts';
-import { ROBINHOOD_CHAIN } from './chains';
-import { isOracleV4Enabled, runRobinhoodScanV4 } from './oracle-v4';
+import { getMiniAppUrl, miniAppKeyboard } from './miniapp';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -19,11 +16,6 @@ const bot = new Telegraf(token);
 // Track active invocations to prevent spam
 const activeUsers = new Set<number>();
 
-/** Escape HTML special chars for Telegram HTML parse mode. */
-function escHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 async function sendMessages(chatId: number, messages: string[]): Promise<void> {
   for (const msg of messages) {
     if (!msg.trim()) continue;
@@ -33,7 +25,7 @@ async function sendMessages(chatId: number, messages: string[]): Promise<void> {
         // @ts-expect-error - Telegraf types may lag behind API
         disable_web_page_preview: true,
       });
-    } catch (err) {
+    } catch {
       // If HTML parsing fails, send as plain text
       const plain = msg.replace(/<[^>]+>/g, '');
       await bot.telegram.sendMessage(chatId, plain);
@@ -43,136 +35,51 @@ async function sendMessages(chatId: number, messages: string[]): Promise<void> {
   }
 }
 
-// /start
+// NOTE: /invoke and /invokeRH were REMOVED. The Oracle hunt is systemic — the
+// admin runs one dual-chain sweep in the Transmute App and every holder
+// receives the broadcast on their timeline. Holders read it in the Mini App
+// (/app), not by paying for a private hunt from here.
+
+// /start — the Mini App is the primary destination now, so it is the first
+// thing the user is offered rather than a command list to memorise.
 bot.start((ctx) => {
+  const hasApp = !!getMiniAppUrl();
+
   const welcome = `<b>𓂀 TRANSMUTE ORACLE</b>
 
 Welcome to the Oracle, seeker.
 
-I channel real-time on-chain intelligence from the Base chain — hidden microcaps, macro signals, and live market structure.
+I channel real-time on-chain intelligence — hidden microcaps, macro signals, and live market structure.
 
-<b>Commands:</b>
+${hasApp ? '<b>Tap below to open the Transmute App</b> right here inside Telegram: connect your wallet and read the Oracle\'s live signals across Base and Robinhood Chain.\n\n' : ''}<b>Commands:</b>
 
-🔮 /invoke — Hunt hidden microcaps
-🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain
 📊 /pulse — Market daily report (macro, sentiment, flows)
-
-<i>Each invocation calls the Oracle in real-time. Responses may take 1-3 minutes as it scans live data across chains and social layers.</i>
+❓ /help — Show all commands
 
 ━━━━━━━━━━━━━━━
 <i>Signal before attention. Always DYOR - NFA.</i>`;
 
-  ctx.reply(welcome, { parse_mode: 'HTML' });
+  ctx.reply(welcome, {
+    parse_mode: 'HTML',
+    reply_markup: miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type),
+  });
 });
 
-// /invoke — Hidden Microcaps
-bot.command('invoke', async (ctx) => {
-  const userId = ctx.from.id;
-
-  if (activeUsers.has(userId)) {
-    return ctx.reply('⏳ Your previous invocation is still running. Please wait.');
+// /app — direct route to the Mini App for people who already know it exists.
+bot.command('app', (ctx) => {
+  const keyboard = miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type);
+  if (!keyboard) {
+    ctx.reply(
+      ctx.chat?.type === 'private'
+        ? '⚠️ The Mini App is not configured yet. Try again shortly.'
+        : 'ℹ️ Open the Mini App from a direct message with me — Telegram only allows it in private chats.',
+    );
+    return;
   }
-
-  activeUsers.add(userId);
-
-  try {
-    await ctx.reply('🔮 <b>Invoking the Oracle...</b>\n<i>Scanning Base chain for hidden microcaps. This may take 1-3 minutes.</i>', { parse_mode: 'HTML' });
-
-    const raw = await invokeOracle();
-    const projects = parseOracleOutput(raw);
-
-    if (projects.length === 0) {
-      await ctx.reply('𓂀 The Oracle found no verified signals at this time.\n\n<i>All candidates failed verification. The market rests — or hides its cards well.</i>', { parse_mode: 'HTML' });
-      return;
-    }
-
-    // Harden: tool-resolve each CA (or abstain) before formatting — a model-
-    // generated address is never sent to users (I1).
-    const hardened = await hardenProjects(projects);
-    const messages = formatWhispersReport(hardened);
-    await sendMessages(ctx.chat.id, messages);
-  } catch (err) {
-    console.error('[invoke] Error:', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  } finally {
-    activeUsers.delete(userId);
-  }
-});
-
-// /invokeRH — Hidden Microcaps on Robinhood Chain (regex: Telegraf string
-// triggers are case-sensitive and users type /invokeRH as often as /invokerh)
-bot.command(/^invokerh$/i, async (ctx) => {
-  const userId = ctx.from.id;
-
-  if (activeUsers.has(userId)) {
-    return ctx.reply('⏳ Your previous invocation is still running. Please wait.');
-  }
-
-  activeUsers.add(userId);
-
-  try {
-    await ctx.reply('🪶 <b>Invoking the Oracle...</b>\n<i>Scanning Robinhood Chain for hidden microcaps. This may take 1-3 minutes.</i>', { parse_mode: 'HTML' });
-
-    // Optional v4 multi-stage pipeline (ORACLE_V4=on): discovery →
-    // deterministic filter → forensic gate → attribution → red team → synthesis.
-    // Verification and CA hardening are built in, so its report is sent as-is.
-    // Default path (below) is the v3 single-pass ORACLE_RH_PROMPT + hardening.
-    if (isOracleV4Enabled()) {
-      const report = await runRobinhoodScanV4();
-      await sendMessages(ctx.chat.id, formatGenericReport('TRANSMUTE ORACLE v4 — ROBINHOOD SCAN', report));
-      return;
-    }
-
-    const raw = await invokeOracleRobinhood();
-    const projects = parseOracleOutput(raw);
-
-    if (projects.length === 0) {
-      await ctx.reply('𓂀 The Oracle found no verified signals at this time.\n\n<i>All candidates failed verification. The market rests — or hides its cards well.</i>', { parse_mode: 'HTML' });
-      return;
-    }
-
-    // Harden against Robinhood Chain: tool-resolve each CA before formatting —
-    // a model-generated address is never sent as-is (I1). Signals whose CA
-    // failed triangulation are DROPPED from the report, not rendered with a
-    // warning: an unverifiable CA is noise, and printed noise reads as a call.
-    const hardened = await hardenProjectsRobinhood(projects);
-    const kept = hardened.filter((h) => h.resolution.status !== 'abstained');
-    const cut = hardened.filter((h) => h.resolution.status === 'abstained');
-    if (cut.length) {
-      console.warn('[invokerh] dropped unverified signals:', cut.map((c) => `${c.ticker}: ${c.resolution.reason}`));
-    }
-
-    if (kept.length === 0) {
-      const reasons = cut
-        .slice(0, 6)
-        .map((c) => `• <b>${escHtml(c.ticker)}</b> — <i>${escHtml(c.resolution.reason ?? 'unverified')}</i>`)
-        .join('\n');
-      await ctx.reply(
-        '𓂀 The Oracle surfaced candidates, but none survived CA verification.\n\n' +
-          (reasons ? `${reasons}\n\n` : '') +
-          '<i>Every address is cross-checked against live market APIs and the chain explorer before being shown. Unverifiable ≠ opportunity.</i>',
-        { parse_mode: 'HTML' },
-      );
-      return;
-    }
-
-    const messages = formatWhispersReport(kept, { chain: ROBINHOOD_CHAIN, fdvCap: '$500K' });
-    if (cut.length) {
-      messages.push(
-        `🗑 <b>Dropped at verification</b> (${cut.length})\n` +
-          cut
-            .slice(0, 6)
-            .map((c) => `• <b>${escHtml(c.ticker)}</b> — <i>${escHtml(c.resolution.reason ?? 'unverified')}</i>`)
-            .join('\n'),
-      );
-    }
-    await sendMessages(ctx.chat.id, messages);
-  } catch (err) {
-    console.error('[invokerh] Error:', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  } finally {
-    activeUsers.delete(userId);
-  }
+  ctx.reply('𓂀 <b>Transmute App</b>\n\nConnect your wallet and read the Oracle\'s live signals — without leaving Telegram.', {
+    parse_mode: 'HTML',
+    reply_markup: keyboard,
+  });
 });
 
 // /pulse — Market Daily Report
@@ -204,13 +111,15 @@ bot.help((ctx) => {
   ctx.reply(
     `<b>𓂀 Transmute Oracle — Commands</b>
 
-🔮 /invoke — Hunt hidden microcaps on Base
-🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain
+𓂀 /app — Open the Transmute App inside Telegram
 📊 /pulse — Market daily report
 ❓ /help — Show this message
 
-<i>All invocations call the Oracle in real-time with web search enabled. Responses take 1-3 minutes.</i>`,
-    { parse_mode: 'HTML' }
+<i>Oracle signals are broadcast systemically — open the app to read the live feed across Base and Robinhood Chain.</i>`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type),
+    }
   );
 });
 
@@ -229,13 +138,19 @@ process.once('SIGTERM', () => bot.stop('SIGTERM'));
 bot.launch().then(async () => {
   await bot.telegram.setMyCommands([
     { command: 'start',  description: 'Start main menu' },
-    { command: 'invoke', description: 'Hunt hidden microcaps' },
-    { command: 'invokerh', description: 'Hunt hidden microcaps on Robinhood Chain' },
+    { command: 'app',    description: 'Open the Transmute App' },
     { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
   ]);
 
+  // The persistent menu button next to the composer. When the Mini App is
+  // configured it becomes a one-tap launcher (the shortest possible path from
+  // "opened the chat" to "reading signals"); otherwise it falls back to the
+  // command list so the button is never dead.
+  const miniAppUrl = getMiniAppUrl();
   await bot.telegram.setChatMenuButton({
-    menuButton: { type: 'commands' },
+    menuButton: miniAppUrl
+      ? { type: 'web_app', text: 'Transmute', web_app: { url: miniAppUrl } }
+      : { type: 'commands' },
   });
 
   console.log('𓂀 Transmute Oracle Bot is running');
