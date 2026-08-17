@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getMiniAppUrl } from '../src/miniapp';
 
 /**
  * GET /api/set-webhook?secret=YOUR_SECRET
@@ -71,7 +70,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           { command: 'callnow', description: 'Submit a token call to the Pantheon' },
           { command: 'gods',    description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
           { command: 'flex',    description: 'Mint a flexcard of a tracked call' },
-          { command: 'pulse',   description: 'Market daily report (macro, sentiment, flows)' },
           { command: 'optout',  description: 'Stop receiving Pantheon DMs' },
           { command: 'optin',   description: 'Re-enable Pantheon DMs' },
           { command: 'cancel',  description: 'Cancel an in-progress wizard' },
@@ -80,20 +78,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   );
 
-  // The persistent button next to the composer. With the Mini App configured it
-  // becomes a one-tap launcher — the shortest path from "opened the chat" to
-  // "reading signals". Falls back to the command list so it is never dead.
-  const miniAppUrl = getMiniAppUrl();
+  // The persistent button next to the composer stays the COMMANDS menu.
+  //
+  // Telegram gives this slot to exactly one thing: either the "/" command list
+  // or a web_app launcher — never both. Pointing it at the Mini App silently
+  // took the "/" menu away from users, which is how they browse everything the
+  // bot can do. The Mini App is reachable from the /start inline button and the
+  // /app command, so it loses nothing by not owning this slot.
   const menuRes = await fetch(
     `https://api.telegram.org/bot${token}/setChatMenuButton`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        menu_button: miniAppUrl
-          ? { type: 'web_app', text: 'Transmute', web_app: { url: miniAppUrl } }
-          : { type: 'commands' },
-      }),
+      body: JSON.stringify({ menu_button: { type: 'commands' } }),
     }
   );
 

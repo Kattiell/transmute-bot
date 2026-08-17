@@ -53,7 +53,7 @@ I channel real-time on-chain intelligence — hidden microcaps, macro signals, a
 
 ${hasApp ? '<b>Tap below to open the Transmute App</b> right here inside Telegram: connect your wallet and read the Oracle\'s live signals across Base and Robinhood Chain.\n\n' : ''}<b>Commands:</b>
 
-📊 /pulse — Market daily report (macro, sentiment, flows)
+𓂀 /app — Open the Transmute App
 ❓ /help — Show all commands
 
 ━━━━━━━━━━━━━━━
@@ -112,7 +112,6 @@ bot.help((ctx) => {
     `<b>𓂀 Transmute Oracle — Commands</b>
 
 𓂀 /app — Open the Transmute App inside Telegram
-📊 /pulse — Market daily report
 ❓ /help — Show this message
 
 <i>Oracle signals are broadcast systemically — open the app to read the live feed across Base and Robinhood Chain.</i>`,
@@ -139,18 +138,15 @@ bot.launch().then(async () => {
   await bot.telegram.setMyCommands([
     { command: 'start',  description: 'Start main menu' },
     { command: 'app',    description: 'Open the Transmute App' },
-    { command: 'pulse',  description: 'Market daily report (macro, sentiment, flows)' },
+    { command: 'help',   description: 'Show all commands' },
   ]);
 
-  // The persistent menu button next to the composer. When the Mini App is
-  // configured it becomes a one-tap launcher (the shortest possible path from
-  // "opened the chat" to "reading signals"); otherwise it falls back to the
-  // command list so the button is never dead.
-  const miniAppUrl = getMiniAppUrl();
+  // The composer's menu button stays the COMMANDS menu. Telegram gives that
+  // slot to exactly one thing — the "/" list OR a web_app launcher, never both
+  // — and taking the "/" list away hides every command from the user. The Mini
+  // App is one tap away from /start and /app instead.
   await bot.telegram.setChatMenuButton({
-    menuButton: miniAppUrl
-      ? { type: 'web_app', text: 'Transmute', web_app: { url: miniAppUrl } }
-      : { type: 'commands' },
+    menuButton: { type: 'commands' },
   });
 
   console.log('𓂀 Transmute Oracle Bot is running');
