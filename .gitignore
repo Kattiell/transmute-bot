@@ -4,3 +4,7 @@ dist/
 .claude/
 
 .vercel
+.env*
+# ...but the documented template must stay tracked (`.env*` above, added by
+# `vercel link`, would otherwise swallow it).
+!.env.example

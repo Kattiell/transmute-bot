@@ -3,11 +3,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { Telegraf } from 'telegraf';
 import { timingSafeEqual } from 'node:crypto';
-import { invokeOracle, invokeOracleRobinhood, invokeOracleWithPrompt, invokeHorus } from '../src/grok';
-import { isOracleV4Enabled, runRobinhoodScanV4 } from '../src/oracle-v4';
-import { parseOracleOutput } from '../src/parser';
-import { hardenProjects, hardenProjectsRobinhood } from '../src/oracle-harden';
-import { formatWhispersReport, formatGenericReport } from '../src/formatter';
+import { invokeOracleWithPrompt, invokeHorus } from '../src/grok';
+import { formatGenericReport } from '../src/formatter';
 import { PULSE_PROMPT, buildHorusPrompt } from '../src/prompts';
 import {
   identityMiddleware,
@@ -141,168 +138,17 @@ bot.help((ctx) => ctx.reply(buildHelpMessage(), { parse_mode: 'HTML' }));
 
 registerGateCommands(bot);
 
-bot.command('invoke', async (ctx) => {
-  const from = ctx.from;
-  if (!from) return;
-
-  const maxPerDay = DAILY_LIMITS.invoke ?? 1;
-  const link = await getWalletLink(from.id).catch(() => null);
-  let usage: Awaited<ReturnType<typeof checkAndIncrementDailyUsage>>;
-  try {
-    usage = await checkAndIncrementDailyUsage(from.id, 'invoke', maxPerDay, link?.wallet_address);
-  } catch (err) {
-    console.error('[invoke] daily usage check failed', err);
-    await ctx.reply('⚠️ Could not verify daily usage. Please try again.');
-    return;
-  }
-
-  if (!usage.allowed) {
-    const resetMs = new Date(usage.resetAt).getTime() - Date.now();
-    const hours = Math.floor(resetMs / 3600_000);
-    const minutes = Math.floor((resetMs % 3600_000) / 60_000);
-    await logAccess({
-      telegramId: from.id,
-      action: 'cmd:invoke',
-      success: false,
-      reason: 'daily_limit_reached',
-      metadata: { count: usage.count, max: usage.max },
-    });
-    await ctx.reply(
-      `⏳ <b>Daily /invoke limit reached.</b>\n\n` +
-        `You've used <b>${usage.count}/${usage.max}</b> today.\n` +
-        `Resets in <b>${hours}h ${minutes}m</b> (00:00 UTC).`,
-      { parse_mode: 'HTML' },
-    );
-    return;
-  }
-
-  try {
-    const usesLine = usage.unlimited
-      ? 'Uses today: <b>∞ (unlimited)</b>'
-      : `Uses today: <b>${usage.count}/${usage.max}</b>`;
-    await ctx.reply(
-      `🔮 <b>Invoking the Oracle...</b>\n` +
-        `<i>Scanning Base chain for hidden microcaps. This may take 1-3 minutes.</i>\n\n` +
-        usesLine,
-      { parse_mode: 'HTML' },
-    );
-
-    const tOracleStart = Date.now();
-    const raw = await invokeOracle();
-    console.log(`[invoke] oracle done in ${Date.now() - tOracleStart}ms chat=${ctx.chat.type}`);
-
-    const projects = parseOracleOutput(raw);
-
-    const tSendStart = Date.now();
-    if (projects.length === 0) {
-      const messages = formatGenericReport('ORACLE SCAN REPORT', raw);
-      await sendMessages(ctx.chat.id, messages, ctx.chat.type);
-    } else {
-      // Harden: tool-resolve each CA (or abstain) before formatting. The card
-      // renderer reads project.resolution (I1 — never the model's CA), so passing
-      // un-hardened ParsedProjects makes contractSection() read `undefined` and
-      // throw, which surfaced to users as "The Oracle encountered an error".
-      const hardened = await hardenProjects(projects);
-      await sendMessages(ctx.chat.id, formatWhispersReport(hardened), ctx.chat.type);
-    }
-    console.log(`[invoke] send done in ${Date.now() - tSendStart}ms projects=${projects.length}`);
-  } catch (err) {
-    console.error('[invoke]', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  }
-});
-
-// /invokeRH — the /invoke flow pointed at Robinhood mainnet. Registered via
-// regex because Telegraf string triggers are case-sensitive and seekers type
-// /invokeRH as often as /invokerh (the premium gate lowercases either form).
-bot.command(/^invokerh$/i, async (ctx) => {
-  const from = ctx.from;
-  if (!from) return;
-
-  const maxPerDay = DAILY_LIMITS.invokerh ?? 1;
-  const link = await getWalletLink(from.id).catch(() => null);
-  let usage: Awaited<ReturnType<typeof checkAndIncrementDailyUsage>>;
-  try {
-    usage = await checkAndIncrementDailyUsage(from.id, 'invokerh', maxPerDay, link?.wallet_address);
-  } catch (err) {
-    console.error('[invokerh] daily usage check failed', err);
-    await ctx.reply('⚠️ Could not verify daily usage. Please try again.');
-    return;
-  }
-
-  if (!usage.allowed) {
-    const resetMs = new Date(usage.resetAt).getTime() - Date.now();
-    const hours = Math.floor(resetMs / 3600_000);
-    const minutes = Math.floor((resetMs % 3600_000) / 60_000);
-    await logAccess({
-      telegramId: from.id,
-      action: 'cmd:invokerh',
-      success: false,
-      reason: 'daily_limit_reached',
-      metadata: { count: usage.count, max: usage.max },
-    });
-    await ctx.reply(
-      `⏳ <b>Daily /invokeRH limit reached.</b>\n\n` +
-        `You've used <b>${usage.count}/${usage.max}</b> today.\n` +
-        `Resets in <b>${hours}h ${minutes}m</b> (00:00 UTC).`,
-      { parse_mode: 'HTML' },
-    );
-    return;
-  }
-
-  try {
-    const usesLine = usage.unlimited
-      ? 'Uses today: <b>∞ (unlimited)</b>'
-      : `Uses today: <b>${usage.count}/${usage.max}</b>`;
-    await ctx.reply(
-      `🪶 <b>Invoking the Oracle...</b>\n` +
-        `<i>Scanning Robinhood Chain for hidden microcaps. This may take 1-3 minutes.</i>\n\n` +
-        usesLine,
-      { parse_mode: 'HTML' },
-    );
-
-    const tOracleStart = Date.now();
-
-    // v4 multi-stage pipeline (Venice by default, xAI when keyed): scout
-    // shards → deterministic filter → forensic gate → dev↔X attribution →
-    // red team → synthesis. CA verification/hardening is built in (Stage 1.5
-    // gates on Blockscout/RPC + DexScreener facts), so its report is sent as-is.
-    if (isOracleV4Enabled()) {
-      const report = await runRobinhoodScanV4();
-      console.log(`[invokerh] v4 scan done in ${Date.now() - tOracleStart}ms chat=${ctx.chat.type}`);
-      await sendMessages(
-        ctx.chat.id,
-        formatGenericReport('TRANSMUTE ORACLE v4 — ROBINHOOD SCAN', report),
-        ctx.chat.type,
-      );
-      return;
-    }
-
-    const raw = await invokeOracleRobinhood();
-    console.log(`[invokerh] oracle done in ${Date.now() - tOracleStart}ms chat=${ctx.chat.type}`);
-
-    const projects = parseOracleOutput(raw);
-
-    const tSendStart = Date.now();
-    if (projects.length === 0) {
-      const messages = formatGenericReport('ROBINHOOD ORACLE SCAN', raw);
-      await sendMessages(ctx.chat.id, messages, ctx.chat.type);
-    } else {
-      // Harden against Robinhood Chain: tool-resolve each CA (or abstain)
-      // before formatting — a model-generated address is never sent as-is.
-      const hardened = await hardenProjectsRobinhood(projects);
-      await sendMessages(
-        ctx.chat.id,
-        formatWhispersReport(hardened, { chain: ROBINHOOD_CHAIN, fdvCap: '$500K' }),
-        ctx.chat.type,
-      );
-    }
-    console.log(`[invokerh] send done in ${Date.now() - tSendStart}ms projects=${projects.length}`);
-  } catch (err) {
-    console.error('[invokerh]', err);
-    await ctx.reply('❌ The Oracle encountered an error. Please try again later.');
-  }
-});
+// NOTE: /invoke and /invokeRH were REMOVED from the bot.
+//
+// The Oracle hunt is systemic now: the admin runs one dual-chain sweep in the
+// Transmute App and the findings are broadcast to every user's timeline. Having
+// each holder pay for a private hunt from Telegram both duplicated that spend
+// and produced signals nobody else could see — the exact thing the systemic
+// model exists to stop. Holders reach the broadcast through the Mini App
+// (/app), not through a command here.
+//
+// /oracle (Horus, on-demand CA revelation) and /pulse are unaffected: they
+// answer a question the user brings, so they stay per-user.
 
 bot.command('pulse', async (ctx) => {
   try {

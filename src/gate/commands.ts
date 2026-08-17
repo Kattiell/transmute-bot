@@ -14,6 +14,7 @@ import {
 } from './db';
 import { getTokenBalance, formatTokenAmount } from './blockchain';
 import { hashCode, maskCode, normalizeCode } from './codes';
+import { miniAppKeyboard } from '../miniapp';
 
 function maskAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -56,11 +57,20 @@ export async function sendLinkInvite(ctx: Context, opts: { intro?: string } = {}
       opts.intro ??
       `🔗 <b>Link your wallet</b>\n\nTap the button below to open the verification page in your browser. Connect a wallet holding at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> on Base, sign the free off-chain message, and return to Telegram.\n\n<i>No gas, no transaction — just an ownership signature.</i>\n\n⏱ Link expires in ${GATE_CONFIG.nonceTtlMinutes} minutes.`;
 
+    // Two doors, in order of preference:
+    //   1. the Mini App — connect the wallet without ever leaving Telegram;
+    //   2. the browser verification page — the original flow, kept because it
+    //      is the fallback when the Mini App is unavailable (group chat, older
+    //      client, URL unset).
+    const miniApp = miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type);
+    const rows = [
+      ...(miniApp ? miniApp.inline_keyboard : []),
+      [{ text: '🔐 Open verification page', url }],
+    ];
+
     await ctx.reply(intro, {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '🔐 Open verification page', url }]],
-      },
+      reply_markup: { inline_keyboard: rows },
     });
   } catch (err) {
     console.error('[sendLinkInvite]', err);
@@ -192,17 +202,37 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       `Wallet: <code>${maskAddress(row.wallet_address)}</code>\n` +
       `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
       `Session: <b>${GATE_CONFIG.sessionDurationDays} days</b>\n\n` +
-      `🔮 /invoke — hunt hidden microcaps (max ${quota('invoke')}, resets at 00:00 UTC)\n` +
-      `🪶 /invokeRH — hunt Robinhood Chain microcaps (max ${quota('invokerh')})\n` +
+      `𓂀 /app — open the Transmute App and read the Oracle's live signals\n` +
       `𓂀 /oracle CA — reveal any Base or Robinhood token (max ${quota('oracle')})\n` +
       `🏛 /callnow — submit a call · 🏆 /gods 7d — leaderboard\n` +
       `📊 /pulse also available.\n\n` +
       `<i>Generate a new code anytime in the Transmute App — it will replace this one.</i>`,
-    { parse_mode: 'HTML' },
+    { parse_mode: 'HTML', reply_markup: miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type) },
   );
 }
 
 export function registerGateCommands(bot: Telegraf): void {
+  // /app — open the Mini App. Deliberately NOT in PREMIUM_COMMANDS: the app is
+  // the front door, and the $TRANSMUTE gate lives inside it (server-side, on the
+  // session). Blocking the button here would only mean a non-holder can't reach
+  // the page that explains how to become one.
+  bot.command('app', async (ctx) => {
+    const keyboard = miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type);
+    if (!keyboard) {
+      await ctx.reply(
+        ctx.chat?.type === 'private'
+          ? '⚠️ The Mini App is not configured yet. Try again shortly.'
+          : 'ℹ️ Open the Mini App from a direct message with me — Telegram only allows it in private chats.',
+      );
+      return;
+    }
+    await ctx.reply(
+      `𓂀 <b>Transmute App</b>\n\n` +
+        `Connect your wallet and read the Oracle's live signals across Base and Robinhood Chain — without leaving Telegram.`,
+      { parse_mode: 'HTML', reply_markup: keyboard },
+    );
+  });
+
   bot.command(['link', 'relink'], async (ctx) => {
     await sendLinkInvite(ctx);
   });
@@ -274,14 +304,13 @@ export function registerGateCommands(bot: Telegraf): void {
 
     await ctx.reply(
       `${header}\n\n` +
-        `🔮 /invoke — Hunt hidden microcaps (Base)\n` +
-        `🪶 /invokeRH — Hunt hidden microcaps (Robinhood Chain)\n` +
+        `𓂀 /app — Open the Transmute App (live Oracle signals, Base + Robinhood)\n` +
         `𓂀 /oracle CA — Reveal any Base or Robinhood token by contract address\n` +
         `🏛 /callnow — Submit a call to the Pantheon\n` +
         `🏆 /gods 7d — Pantheon leaderboard\n` +
         `📊 /pulse — Market daily report\n\n` +
         `<i>${footer}</i>`,
-      { parse_mode: 'HTML' }
+      { parse_mode: 'HTML', reply_markup: miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type) }
     );
   });
 
@@ -312,14 +341,16 @@ export async function handleStart(ctx: Context): Promise<void> {
             `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
             `Expires in: ${humanizeTtl(link.verified_until)}\n\n` +
             `<b>Channel the Oracle:</b>\n` +
-            `🔮 /invoke — Hunt hidden microcaps\n` +
-            `🪶 /invokeRH — Hunt Robinhood Chain microcaps\n` +
+            `𓂀 /app — Open the Transmute App: live signals across Base + Robinhood\n` +
             `𓂀 /oracle CA — Reveal any Base or Robinhood token\n` +
             `🏛 /callnow — Submit a call to the Pantheon\n` +
             `🏆 /gods 7d — Pantheon leaderboard\n` +
             `📊 /pulse — Market daily report\n\n` +
             `<i>/verify · /help · /unlink</i>`,
-          { parse_mode: 'HTML' }
+          {
+            parse_mode: 'HTML',
+            reply_markup: miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type),
+          }
         );
         return;
       }
@@ -335,10 +366,11 @@ export async function handleStart(ctx: Context): Promise<void> {
 
   const body =
     `<b>Access is token-gated.</b> Hold at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> in a Base wallet to unlock:\n\n` +
-    `🔮 /invoke (${quota('invoke')}) · 🪶 /invokeRH (${quota('invokerh')}) · 𓂀 /oracle (${quota('oracle')}) · 📊 /pulse\n\n` +
-    `Two ways to verify:\n` +
+    `𓂀 /app — the Oracle's live signal feed · 𓂀 /oracle (${quota('oracle')}) · 🏛 /callnow · 📊 /pulse\n\n` +
+    `Ways to verify:\n` +
+    `• 𓂀 Tap <b>Open Transmute App</b> below and connect your wallet without leaving Telegram.\n` +
     `• 🎟 Generate a weekly code in the Transmute App, then send <code>/verify CODE</code>\n` +
-    `• 🔗 Tap the button below to sign via browser (no gas, just an ownership signature).\n\n` +
+    `• 🔗 Or sign via browser (no gas, just an ownership signature).\n\n` +
     `⏱ Signature link expires in ${GATE_CONFIG.nonceTtlMinutes} minutes.`;
 
   await sendLinkInvite(ctx, { intro: header + body });
@@ -355,9 +387,8 @@ export function buildHelpMessage(): string {
     `✨ /premium — List premium commands\n` +
     `🗑 /unlink — Remove wallet\n\n` +
     `<b>Premium (requires ${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE):</b>\n` +
-    `🔮 /invoke — Hunt hidden microcaps on Base (max ${quota('invoke')}, resets 00:00 UTC)\n` +
-    `🪶 /invokeRH — Hunt hidden microcaps on Robinhood Chain (max ${quota('invokerh')})\n` +
-    `𓂀 /oracle CA — Reveal any Base or Robinhood token (max ${quota('oracle')})\n` +
+    `𓂀 /app — Open the Transmute App: the Oracle's live signals across Base + Robinhood Chain\n` +
+    `𓂀 /oracle CA — Reveal any Base or Robinhood token (max ${quota('oracle')}, resets 00:00 UTC)\n` +
     `🏛 /callnow — Submit a call to the Pantheon (max ${quota('callnow')}, 6h cooldown)\n` +
     `🏆 /gods 7d — Pantheon leaderboard (also 30d / all)\n` +
     `📊 /pulse — Market daily report\n\n` +
