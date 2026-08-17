@@ -204,8 +204,7 @@ async function redeemAccessCode(ctx: Context, raw: string): Promise<void> {
       `Session: <b>${GATE_CONFIG.sessionDurationDays} days</b>\n\n` +
       `𓂀 /app — open the Transmute App and read the Oracle's live signals\n` +
       `𓂀 /oracle CA — reveal any Base or Robinhood token (max ${quota('oracle')})\n` +
-      `🏛 /callnow — submit a call · 🏆 /gods 7d — leaderboard\n` +
-      `📊 /pulse also available.\n\n` +
+      `🏛 /callnow — submit a call · 🏆 /gods 7d — leaderboard\n\n` +
       `<i>Generate a new code anytime in the Transmute App — it will replace this one.</i>`,
     { parse_mode: 'HTML', reply_markup: miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type) },
   );
@@ -308,7 +307,7 @@ export function registerGateCommands(bot: Telegraf): void {
         `𓂀 /oracle CA — Reveal any Base or Robinhood token by contract address\n` +
         `🏛 /callnow — Submit a call to the Pantheon\n` +
         `🏆 /gods 7d — Pantheon leaderboard\n` +
-        `📊 /pulse — Market daily report\n\n` +
+        `🎴 /flex CA — Mint a flexcard of a tracked call\n\n` +
         `<i>${footer}</i>`,
       { parse_mode: 'HTML', reply_markup: miniAppKeyboard('𓂀 Open Transmute App', ctx.chat?.type) }
     );
@@ -345,7 +344,7 @@ export async function handleStart(ctx: Context): Promise<void> {
             `𓂀 /oracle CA — Reveal any Base or Robinhood token\n` +
             `🏛 /callnow — Submit a call to the Pantheon\n` +
             `🏆 /gods 7d — Pantheon leaderboard\n` +
-            `📊 /pulse — Market daily report\n\n` +
+            `🎴 /flex CA — Mint a flexcard of a tracked call\n\n` +
             `<i>/verify · /help · /unlink</i>`,
           {
             parse_mode: 'HTML',
@@ -366,7 +365,7 @@ export async function handleStart(ctx: Context): Promise<void> {
 
   const body =
     `<b>Access is token-gated.</b> Hold at least <b>${GATE_CONFIG.minBalance.toLocaleString('en-US')} $TRANSMUTE</b> in a Base wallet to unlock:\n\n` +
-    `𓂀 /app — the Oracle's live signal feed · 𓂀 /oracle (${quota('oracle')}) · 🏛 /callnow · 📊 /pulse\n\n` +
+    `𓂀 /app — the Oracle's live signal feed · 𓂀 /oracle (${quota('oracle')}) · 🏛 /callnow · 🏆 /gods\n\n` +
     `Ways to verify:\n` +
     `• 𓂀 Tap <b>Open Transmute App</b> below and connect your wallet without leaving Telegram.\n` +
     `• 🎟 Generate a weekly code in the Transmute App, then send <code>/verify CODE</code>\n` +
@@ -390,8 +389,7 @@ export function buildHelpMessage(): string {
     `𓂀 /app — Open the Transmute App: the Oracle's live signals across Base + Robinhood Chain\n` +
     `𓂀 /oracle CA — Reveal any Base or Robinhood token (max ${quota('oracle')}, resets 00:00 UTC)\n` +
     `🏛 /callnow — Submit a call to the Pantheon (max ${quota('callnow')}, 6h cooldown)\n` +
-    `🏆 /gods 7d — Pantheon leaderboard (also 30d / all)\n` +
-    `📊 /pulse — Market daily report\n\n` +
+    `🏆 /gods 7d — Pantheon leaderboard (also 30d / all)\n\n` +
     `<b>Calls & flex (free):</b>\n` +
     `📟 Post a Base CA in a group — the Oracle replies with a live stats card\n` +
     `🎴 /flex [CA] — Mint a flexcard image of a tracked call\n\n` +
