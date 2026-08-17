@@ -4,7 +4,15 @@ dist/
 .claude/
 
 .vercel
+
+# env files — including `.env.example`, deliberately. The template documents
+# every variable, and the set of variable NAMES alone maps the gate, the
+# allowlists and the internal endpoints. Read the names from the Vercel
+# dashboard or from the `process.env` reads in the code instead.
 .env*
-# ...but the documented template must stay tracked (`.env*` above, added by
-# `vercel link`, would otherwise swallow it).
-!.env.example
+
+# Database migrations — applied by hand through the Supabase SQL Editor, so the
+# repo was never their execution path, only their distribution path. Keeping
+# them out avoids publishing table names, columns, constraints and RLS posture.
+# The files stay in the working copy; they are `git rm --cached`-ed, not deleted.
+supabase-migration*.sql
