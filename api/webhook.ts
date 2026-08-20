@@ -142,6 +142,16 @@ async function sendMessages(
  * missing menu entry is cosmetic (the command still works when typed), and the
  * real authorization happens server-side on every broadcast request.
  */
+/** The operator's menu inside a group. Shared by the /start push and the
+ *  post-invoke backstop so the two can never drift apart. */
+const OPERATOR_GROUP_COMMANDS = [
+  { command: 'invoke', description: 'Systemic hunt — Base + Robinhood, broadcasts to everyone' },
+  { command: 'oracle', description: 'Reveal a token by its contract address' },
+  { command: 'callnow', description: 'Submit a token call to the Pantheon' },
+  { command: 'gods', description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
+  { command: 'flex', description: 'Mint a flexcard of a tracked call' },
+];
+
 async function syncOperatorMenu(ctx: Context): Promise<boolean> {
   const from = ctx.from;
   const chat = ctx.chat;
@@ -164,6 +174,34 @@ async function syncOperatorMenu(ctx: Context): Promise<boolean> {
       ],
       { scope: { type: 'chat', chat_id: chat.id } },
     );
+
+    // ALSO push the entry into every group the bot serves, scoped to this one
+    // member so nobody else's menu changes.
+    //
+    // Without this the group menu was a chicken-and-egg: it only appeared after
+    // a successful /invoke there, which you could only fire by typing a command
+    // you could not see. One /start in the DM now lights it up everywhere.
+    void (async () => {
+      let groups: number[] = [];
+      try {
+        groups = await listActiveGroupIds();
+      } catch (err) {
+        console.warn('[operator-menu] group list failed (cosmetic)', err);
+        return;
+      }
+      await Promise.all(
+        groups.map((chatId) =>
+          bot.telegram
+            .setMyCommands(OPERATOR_GROUP_COMMANDS, {
+              scope: { type: 'chat_member', chat_id: chatId, user_id: from.id },
+            })
+            // A group the operator is not a member of rejects this — expected,
+            // and not worth a warning per group per /start.
+            .catch(() => undefined),
+        ),
+      );
+    })();
+
     return true;
   } catch (err) {
     console.warn('[operator-menu] sync failed (cosmetic)', err);
@@ -272,16 +310,9 @@ bot.command('invoke', async (ctx) => {
   // cosmetic, and the command already works typed.
   if (inGroup) {
     void bot.telegram
-      .setMyCommands(
-        [
-          { command: 'invoke', description: 'Systemic hunt — Base + Robinhood, broadcasts to everyone' },
-          { command: 'oracle', description: 'Reveal a token by its contract address' },
-          { command: 'callnow', description: 'Submit a token call to the Pantheon' },
-          { command: 'gods', description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
-          { command: 'flex', description: 'Mint a flexcard of a tracked call' },
-        ],
-        { scope: { type: 'chat_member', chat_id: ctx.chat.id, user_id: from.id } },
-      )
+      .setMyCommands(OPERATOR_GROUP_COMMANDS, {
+        scope: { type: 'chat_member', chat_id: ctx.chat.id, user_id: from.id },
+      })
       .catch((err) => console.warn('[operator-menu] group scope failed (cosmetic)', err));
   }
 
