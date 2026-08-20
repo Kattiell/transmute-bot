@@ -11,6 +11,7 @@ import {
   startBroadcast,
   pollBroadcast,
   isBroadcastConfigured,
+  isOperator,
   type BroadcastProject,
 } from '../src/oracle/broadcast';
 import { PULSE_PROMPT, buildHorusPrompt } from '../src/prompts';
@@ -127,6 +128,49 @@ async function sendMessages(
   }
 }
 
+/**
+ * Show /invoke in the operator's command menu — and only theirs.
+ *
+ * Telegram's default command list is GLOBAL, which is why /invoke was left out
+ * of it: advertising an operator-only command to every holder just earns them a
+ * "restricted" reply. Chat-scoped commands are the mechanism built for exactly
+ * this — `scope: { type: 'chat', chat_id }` replaces the menu for one chat.
+ *
+ * Fire-and-forget on /start, so the menu heals itself: whoever currently holds
+ * the wallet link gets the entry the next time they open the bot, and nobody
+ * has to remember to run a setup script. Failures are silent by design — a
+ * missing menu entry is cosmetic (the command still works when typed), and the
+ * real authorization happens server-side on every broadcast request.
+ */
+async function syncOperatorMenu(ctx: Context): Promise<boolean> {
+  const from = ctx.from;
+  const chat = ctx.chat;
+  if (!from || !chat || chat.type !== 'private') return false;
+
+  try {
+    if (!(await isOperator(from.id))) return false;
+    await bot.telegram.setMyCommands(
+      [
+        { command: 'start', description: 'Start main menu' },
+        { command: 'invoke', description: 'Systemic hunt — Base + Robinhood, broadcasts to everyone' },
+        { command: 'app', description: 'Open the Transmute App' },
+        { command: 'oracle', description: 'Reveal a token by its contract address' },
+        { command: 'callnow', description: 'Submit a token call to the Pantheon' },
+        { command: 'gods', description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
+        { command: 'flex', description: 'Mint a flexcard of a tracked call' },
+        { command: 'optout', description: 'Stop receiving Pantheon DMs' },
+        { command: 'optin', description: 'Re-enable Pantheon DMs' },
+        { command: 'cancel', description: 'Cancel an in-progress wizard' },
+      ],
+      { scope: { type: 'chat', chat_id: chat.id } },
+    );
+    return true;
+  } catch (err) {
+    console.warn('[operator-menu] sync failed (cosmetic)', err);
+    return false;
+  }
+}
+
 bot.start(async (ctx) => {
   // Deep link from the CA card's "Call Now" button:
   // https://t.me/<bot>?start=callnow → jump straight into the wizard.
@@ -140,7 +184,10 @@ bot.start(async (ctx) => {
     await beginCallNowWizard(ctx);
     return;
   }
-  await handleStart(ctx);
+  // Capped at 2.5s inside isOperator, so a slow app degrades to the ordinary
+  // menu instead of making /start look dead.
+  const operator = await syncOperatorMenu(ctx);
+  await handleStart(ctx, { isOperator: operator });
 });
 bot.help((ctx) => ctx.reply(buildHelpMessage(), { parse_mode: 'HTML' }));
 

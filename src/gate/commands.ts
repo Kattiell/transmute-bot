@@ -322,9 +322,22 @@ export function registerGateCommands(bot: Telegraf): void {
   });
 }
 
-export async function handleStart(ctx: Context): Promise<void> {
+/**
+ * `isOperator` is a DISPLAY hint, resolved by the caller against the app. It
+ * only decides whether the /invoke line is printed — the command itself is
+ * authorized server-side on every request, so a wrong hint costs a line of
+ * text, never access.
+ */
+export async function handleStart(
+  ctx: Context,
+  opts: { isOperator?: boolean } = {},
+): Promise<void> {
   const from = ctx.from;
   if (!from) return;
+
+  const operatorLine = opts.isOperator
+    ? `🜂 /invoke — <b>Systemic hunt</b>: Base + Robinhood in one sweep, broadcast to every holder\n`
+    : '';
 
   const link = await getWalletLink(from.id);
 
@@ -340,6 +353,7 @@ export async function handleStart(ctx: Context): Promise<void> {
             `Balance: <b>${formatTokenAmount(balance.raw, balance.decimals)}</b> $TRANSMUTE\n` +
             `Expires in: ${humanizeTtl(link.verified_until)}\n\n` +
             `<b>Channel the Oracle:</b>\n` +
+            operatorLine +
             `𓂀 /app — Open the Transmute App: live signals across Base + Robinhood\n` +
             `𓂀 /oracle CA — Reveal any Base or Robinhood token\n` +
             `🏛 /callnow — Submit a call to the Pantheon\n` +
