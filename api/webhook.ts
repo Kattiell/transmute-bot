@@ -4,7 +4,14 @@ import { waitUntil } from '@vercel/functions';
 import { Telegraf } from 'telegraf';
 import { timingSafeEqual } from 'node:crypto';
 import { invokeOracleWithPrompt, invokeHorus } from '../src/grok';
-import { formatGenericReport } from '../src/formatter';
+import { formatGenericReport, formatWhispersReport } from '../src/formatter';
+import type { HardenedProject } from '../src/oracle-harden';
+import {
+  startBroadcast,
+  pollBroadcast,
+  isBroadcastConfigured,
+  type BroadcastProject,
+} from '../src/oracle/broadcast';
 import { PULSE_PROMPT, buildHorusPrompt } from '../src/prompts';
 import {
   identityMiddleware,
@@ -149,6 +156,111 @@ registerGateCommands(bot);
 //
 // /oracle (Horus, on-demand CA revelation) and /pulse are unaffected: they
 // answer a question the user brings, so they stay per-user.
+
+/** Poll cadence and ceiling for /invoke. */
+const BROADCAST_POLL_MS = 8_000;
+// Telegraf's handlerTimeout is 290s and the site's run may use its full 300s
+// budget, so the poll deliberately gives up BEFORE the handler does. Giving up
+// is not failing: the broadcast keeps running server-side and lands on every
+// timeline regardless — the user is told exactly that instead of seeing a
+// timeout error for work that is still on its way.
+const BROADCAST_POLL_CEILING_MS = 230_000;
+
+/** Only projects the site actually hardened can be rendered — the formatter
+ *  dereferences `resolution` unguarded. */
+function renderable(projects: BroadcastProject[], network: 'base' | 'robinhood'): HardenedProject[] {
+  return projects.filter(
+    (p) => (p.network ?? 'base') === network && p.resolution,
+  ) as unknown as HardenedProject[];
+}
+
+/**
+ * /invoke — SYSTEMIC broadcast, operator only.
+ *
+ * Does NOT hunt locally. It triggers the same broadcast the operator's button on
+ * the site triggers and renders the result here, so the daily cap and the
+ * concurrency guard are shared rather than duplicated (see src/oracle/broadcast).
+ *
+ * Authorization is the SITE's call: it checks the forwarded Telegram id against
+ * the wallet linked to the admin wallet. The bot keeps no allowlist of its own,
+ * because a second list is a list that drifts.
+ */
+bot.command('invoke', async (ctx) => {
+  const from = ctx.from;
+  if (!from || !ctx.chat) return;
+
+  if (ctx.chat.type !== 'private') {
+    await ctx.reply('𓂀 The systemic invocation runs in a direct message with me.');
+    return;
+  }
+
+  if (!isBroadcastConfigured()) {
+    await ctx.reply('⚠️ The broadcast bridge is not configured. Try again shortly.');
+    return;
+  }
+
+  const start = await startBroadcast(from.id);
+  if (!start.ok) {
+    const messages: Record<string, string> = {
+      not_operator: '🔒 The systemic invocation is restricted to the operator wallet.',
+      limit_reached: `⏳ <b>Daily broadcast budget spent.</b>\n\n${start.message ?? 'Resets at 00:00 UTC.'}`,
+      pending_in_progress: '⏳ A broadcast is already running. Wait for it to land, then try again.',
+      not_configured: '⚠️ The broadcast bridge is not configured. Try again shortly.',
+      unauthorized: '⚠️ The broadcast bridge rejected this bot — ARENA_BOT_INTERNAL_SECRET does not match between the bot and the app.',
+      error: '❌ Could not reach the Oracle. Try again shortly.',
+    };
+    await ctx.reply(messages[start.code] ?? messages.error, { parse_mode: 'HTML' });
+    return;
+  }
+
+  await ctx.reply(
+    '𓂀 <b>Systemic invocation started.</b>\n' +
+      '<i>Sweeping Base and Robinhood Chain in one pass. 1-3 minutes.</i>\n\n' +
+      'The findings publish to <b>every holder\'s timeline</b> — you\'ll get them here too.',
+    { parse_mode: 'HTML' },
+  );
+
+  const deadline = Date.now() + BROADCAST_POLL_CEILING_MS;
+  let outcome = await pollBroadcast(start.pendingId);
+  while (outcome.status === 'pending' && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, BROADCAST_POLL_MS));
+    outcome = await pollBroadcast(start.pendingId);
+  }
+
+  if (outcome.status === 'failed') {
+    await ctx.reply(
+      `❌ ${outcome.message ?? 'The broadcast failed. Your daily budget was not consumed.'}`,
+    );
+    return;
+  }
+
+  if (outcome.status !== 'done') {
+    await ctx.reply(
+      '⏳ <b>Still channeling.</b>\n\n' +
+        'The broadcast is taking longer than this chat can wait for, but it is still running — ' +
+        'the signals will land on the timeline in the Transmute App on their own.',
+      { parse_mode: 'HTML' },
+    );
+    return;
+  }
+
+  const base = renderable(outcome.projects, 'base');
+  const rh = renderable(outcome.projects, 'robinhood');
+
+  if (base.length === 0 && rh.length === 0) {
+    await ctx.reply('𓂀 The broadcast published, but no signal survived CA verification.');
+    return;
+  }
+
+  // One report per chain: the formatter renders a single chain's explorer links
+  // and FDV framing, so mixing both into one card set would mislabel half of it.
+  if (base.length) {
+    await sendMessages(ctx.chat.id, formatWhispersReport(base, { chain: BASE_CHAIN, fdvCap: '$650K' }), ctx.chat.type);
+  }
+  if (rh.length) {
+    await sendMessages(ctx.chat.id, formatWhispersReport(rh, { chain: ROBINHOOD_CHAIN, fdvCap: '$650K' }), ctx.chat.type);
+  }
+});
 
 bot.command('pulse', async (ctx) => {
   try {
