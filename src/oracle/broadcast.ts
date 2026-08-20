@@ -96,6 +96,35 @@ export async function startBroadcast(telegramId: number): Promise<StartResult> {
   return { ok: false, code: 'error' };
 }
 
+/**
+ * Is this Telegram account the operator?
+ *
+ * Used ONLY to decide whether to show /invoke in that user's command menu —
+ * never as an authorization gate. The real gate is server-side on every
+ * broadcast request, so a wrong answer here costs a menu entry, not access.
+ *
+ * Returns false on any failure: a missing command is a far better failure than
+ * a command dangled at someone who cannot use it.
+ */
+export async function isOperator(telegramId: number): Promise<boolean> {
+  const url = endpoint();
+  if (!url) return false;
+  try {
+    // Hard 2.5s cap: /start blocks on this, and a slow app must never make the
+    // bot look dead. Timing out means the user gets the ordinary menu, which is
+    // the correct degraded state.
+    const res = await fetch(`${url}?telegramId=${encodeURIComponent(String(telegramId))}`, {
+      headers: { 'x-internal-secret': SECRET! },
+      signal: AbortSignal.timeout(2_500),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { isOperator?: boolean };
+    return !!data.isOperator;
+  } catch {
+    return false;
+  }
+}
+
 export async function pollBroadcast(pendingId: string): Promise<PollResult> {
   const url = endpoint();
   if (!url) return { status: 'unreachable' };
