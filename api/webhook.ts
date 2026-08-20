@@ -264,23 +264,24 @@ bot.command('invoke', async (ctx) => {
 });
 
 /**
- * Live (video chat) opened in a group → announce it, with a sound.
+ * Live (video chat) opened in a group → announce it.
+ *
+ * The announcement IS the alert. A bot cannot play a sound on anyone's device —
+ * Telegram gives no such API, and each person's notification tone is their own
+ * setting. Posting a message is what makes every member's phone chime, so an
+ * attached audio clip would add nothing: it only plays if someone taps it. An
+ * earlier version carried one behind a LIVE_ALERT_SOUND env var; it was dropped
+ * as configuration that bought nothing.
  *
  * Scoped to video chats ONLY, deliberately. Joins and leaves were considered
- * and dropped: Telegram throttles a bot to ~20 messages/min per group, and a
- * sound on every member event would burn that budget on noise — the practical
- * cost being that Pantheon call alerts start arriving minutes late. A live
- * opening is rare and is the one moment worth pulling people in.
+ * and dropped: Telegram throttles a bot to ~20 messages/min per group, so a
+ * ping per member event would spend that budget on noise and push Pantheon call
+ * alerts minutes late. A live opening is rare and is the one moment worth
+ * pulling people into.
  *
  * `video_chat_started` arrives as a service message on a normal `message`
  * update, so no change to `allowed_updates` is needed.
- *
- * The sound itself is config, not a committed asset: LIVE_ALERT_SOUND takes a
- * Telegram file_id (upload once, reuse forever — cheapest and most reliable) or
- * an https URL. Unset ⇒ the announcement still goes out, just silent, so the
- * feature degrades instead of breaking.
  */
-const LIVE_ALERT_SOUND = (process.env.LIVE_ALERT_SOUND || '').trim();
 /** One announcement per chat per 10 min — a live can be stopped and restarted. */
 const LIVE_ALERT_COOLDOWN_SECONDS = 600;
 
@@ -297,31 +298,15 @@ bot.on(message('video_chat_started'), async (ctx) => {
     console.warn('[live] cooldown check failed', err);
   }
 
-  const caption =
-    '🔴 <b>LIVE IS ON</b>\n\n' +
-    '<i>The voice channel just opened — jump in.</i>';
-
-  // Try the richest form first and degrade: a bad file_id or an unreachable URL
-  // must never cost the announcement itself.
   try {
-    if (LIVE_ALERT_SOUND) {
-      try {
-        await bot.telegram.sendVoice(chat.id, LIVE_ALERT_SOUND, { caption, parse_mode: 'HTML' });
-        return;
-      } catch {
-        // sendVoice only accepts OGG/OPUS; an mp3 lands here.
-        await bot.telegram.sendAudio(chat.id, LIVE_ALERT_SOUND, { caption, parse_mode: 'HTML' });
-        return;
-      }
-    }
-    await bot.telegram.sendMessage(chat.id, caption, { parse_mode: 'HTML' });
+    await bot.telegram.sendMessage(
+      chat.id,
+      '🔴 <b>LIVE IS ON</b>\n\n<i>The voice channel just opened — jump in.</i>',
+      { parse_mode: 'HTML' },
+    );
   } catch (err) {
+    // Group may have restricted the bot — nothing further to do.
     console.error('[live] announcement failed', err);
-    try {
-      await bot.telegram.sendMessage(chat.id, caption, { parse_mode: 'HTML' });
-    } catch {
-      // group may have muted the bot — nothing further to do
-    }
   }
 });
 
