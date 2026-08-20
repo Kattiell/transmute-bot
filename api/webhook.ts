@@ -2,6 +2,7 @@ import type { Context } from 'telegraf';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { Telegraf } from 'telegraf';
+import { message } from 'telegraf/filters';
 import { timingSafeEqual } from 'node:crypto';
 import { invokeOracleWithPrompt, invokeHorus } from '../src/grok';
 import { formatGenericReport, formatWhispersReport } from '../src/formatter';
@@ -259,6 +260,68 @@ bot.command('invoke', async (ctx) => {
   }
   if (rh.length) {
     await sendMessages(ctx.chat.id, formatWhispersReport(rh, { chain: ROBINHOOD_CHAIN, fdvCap: '$650K' }), ctx.chat.type);
+  }
+});
+
+/**
+ * Live (video chat) opened in a group → announce it, with a sound.
+ *
+ * Scoped to video chats ONLY, deliberately. Joins and leaves were considered
+ * and dropped: Telegram throttles a bot to ~20 messages/min per group, and a
+ * sound on every member event would burn that budget on noise — the practical
+ * cost being that Pantheon call alerts start arriving minutes late. A live
+ * opening is rare and is the one moment worth pulling people in.
+ *
+ * `video_chat_started` arrives as a service message on a normal `message`
+ * update, so no change to `allowed_updates` is needed.
+ *
+ * The sound itself is config, not a committed asset: LIVE_ALERT_SOUND takes a
+ * Telegram file_id (upload once, reuse forever — cheapest and most reliable) or
+ * an https URL. Unset ⇒ the announcement still goes out, just silent, so the
+ * feature degrades instead of breaking.
+ */
+const LIVE_ALERT_SOUND = (process.env.LIVE_ALERT_SOUND || '').trim();
+/** One announcement per chat per 10 min — a live can be stopped and restarted. */
+const LIVE_ALERT_COOLDOWN_SECONDS = 600;
+
+bot.on(message('video_chat_started'), async (ctx) => {
+  const chat = ctx.chat;
+  if (!chat || (chat.type !== 'group' && chat.type !== 'supergroup')) return;
+
+  try {
+    const { allowed } = await checkRateLimit(chat.id, 'live_alert', LIVE_ALERT_COOLDOWN_SECONDS, 1);
+    if (!allowed) return;
+  } catch (err) {
+    // Fail OPEN: a rate-limiter hiccup should not swallow the one event this
+    // whole feature exists for. Worst case is a duplicate announcement.
+    console.warn('[live] cooldown check failed', err);
+  }
+
+  const caption =
+    '🔴 <b>LIVE IS ON</b>\n\n' +
+    '<i>The voice channel just opened — jump in.</i>';
+
+  // Try the richest form first and degrade: a bad file_id or an unreachable URL
+  // must never cost the announcement itself.
+  try {
+    if (LIVE_ALERT_SOUND) {
+      try {
+        await bot.telegram.sendVoice(chat.id, LIVE_ALERT_SOUND, { caption, parse_mode: 'HTML' });
+        return;
+      } catch {
+        // sendVoice only accepts OGG/OPUS; an mp3 lands here.
+        await bot.telegram.sendAudio(chat.id, LIVE_ALERT_SOUND, { caption, parse_mode: 'HTML' });
+        return;
+      }
+    }
+    await bot.telegram.sendMessage(chat.id, caption, { parse_mode: 'HTML' });
+  } catch (err) {
+    console.error('[live] announcement failed', err);
+    try {
+      await bot.telegram.sendMessage(chat.id, caption, { parse_mode: 'HTML' });
+    } catch {
+      // group may have muted the bot — nothing further to do
+    }
   }
 });
 
