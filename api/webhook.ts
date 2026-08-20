@@ -237,18 +237,23 @@ bot.command('invoke', async (ctx) => {
   const from = ctx.from;
   if (!from || !ctx.chat) return;
 
-  if (ctx.chat.type !== 'private') {
-    await ctx.reply('𓂀 The systemic invocation runs in a direct message with me.');
-    return;
-  }
+  const inGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
 
   if (!isBroadcastConfigured()) {
-    await ctx.reply('⚠️ The broadcast bridge is not configured. Try again shortly.');
+    if (!inGroup) await ctx.reply('⚠️ The broadcast bridge is not configured. Try again shortly.');
     return;
   }
 
   const start = await startBroadcast(from.id);
   if (!start.ok) {
+    // In a group, a non-operator typing /invoke gets SILENCE rather than a
+    // refusal. Answering would do two unhelpful things at once: spend the
+    // group's scarce message budget (~20/min, shared with Pantheon call
+    // alerts) on noise, and confirm to everyone that a privileged command
+    // exists. In a DM there is no such cost, so the operator still gets a
+    // straight answer about why nothing happened.
+    if (inGroup && start.code === 'not_operator') return;
+
     const messages: Record<string, string> = {
       not_operator: '🔒 The systemic invocation is restricted to the operator wallet.',
       limit_reached: `⏳ <b>Daily broadcast budget spent.</b>\n\n${start.message ?? 'Resets at 00:00 UTC.'}`,
@@ -261,10 +266,29 @@ bot.command('invoke', async (ctx) => {
     return;
   }
 
+  // Getting here means the app authorized this account, so it is safe to make
+  // the command discoverable for them in THIS group — scoped to the single
+  // member, so no one else's menu changes. Self-healing and fire-and-forget:
+  // cosmetic, and the command already works typed.
+  if (inGroup) {
+    void bot.telegram
+      .setMyCommands(
+        [
+          { command: 'invoke', description: 'Systemic hunt — Base + Robinhood, broadcasts to everyone' },
+          { command: 'oracle', description: 'Reveal a token by its contract address' },
+          { command: 'callnow', description: 'Submit a token call to the Pantheon' },
+          { command: 'gods', description: 'Pantheon leaderboard (/gods 7d|30d|all)' },
+          { command: 'flex', description: 'Mint a flexcard of a tracked call' },
+        ],
+        { scope: { type: 'chat_member', chat_id: ctx.chat.id, user_id: from.id } },
+      )
+      .catch((err) => console.warn('[operator-menu] group scope failed (cosmetic)', err));
+  }
+
   await ctx.reply(
     '𓂀 <b>Systemic invocation started.</b>\n' +
       '<i>Sweeping Base and Robinhood Chain in one pass. 1-3 minutes.</i>\n\n' +
-      'The findings publish to <b>every holder\'s timeline</b> — you\'ll get them here too.',
+      `The findings publish to <b>every holder's timeline</b> — and land ${inGroup ? 'in this group' : 'here'} when ready.`,
     { parse_mode: 'HTML' },
   );
 
